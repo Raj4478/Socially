@@ -34,7 +34,7 @@ function CreatePost() {
       }
     } catch (error) {
       console.error("Failed to create post:", error);
-       toast.error("Failed to create post");
+      toast.error("Failed to create post");
     } finally {
       setIsPosting(false);
     }

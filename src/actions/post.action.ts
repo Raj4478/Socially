@@ -1,77 +1,74 @@
-"use server"
+"use server";
 
 import prisma from "@/lib/prisma";
 import { getDbUserId } from "./users.action";
 import { revalidatePath } from "next/cache";
 
-export async function createPost(content: string, image: string){
-
-    try {
-        const userId = await getDbUserId();
-         if (!userId) {
-            return { success: false, error: "User not found" };
-        }
-
-        const post  = await prisma.post.create({
-            data : {
-                content,
-                image,
-                authorId: userId
-            },
-        })
-
-        revalidatePath("/");
-        return { success: true, post };
-    } catch (error) {
-       console.error("Error creating post:", error);
-        return { success: false, error };
+export async function createPost(content: string, image: string) {
+  try {
+    const userId = await getDbUserId();
+    if (!userId) {
+      return { success: false, error: "User not found" };
     }
+
+    const post = await prisma.post.create({
+      data: {
+        content,
+        image,
+        authorId: userId,
+      },
+    });
+
+    revalidatePath("/");
+    return { success: true, post };
+  } catch (error) {
+    console.error("Error creating post:", error);
+    return { success: false, error };
+  }
 }
 
-
-
 export async function getPosts() {
-    try {
-        const posts = await prisma.post.findMany({
-            orderBy: { createdAt: "desc" },
-            include: {
-                author: {
-                    select: {
-                        id: true, // <-- add this line
-                        name: true,
-                        username: true,
-                        image: true,
-                    }
-                },
-                comments: {
-                    include: {
-                        author: {
-                            select: {
-                                id: true,
-                                name: true,
-                                username: true,
-                                image: true,
-                            }
-                        }
-                    },
-                    orderBy: { createdAt: "asc" }
-                },
-                likes: {
-                    select: { userId: true }
-                },
-                _count: {
-                    select: {
-                        comments: true,
-                        likes: true
-                    }
-                }
-            }
-        });
-        return posts;
-    } catch (error) {
-        console.error("Error fetching posts:", error);
-        return [];
-    }
+  try {
+    const posts = await prisma.post.findMany({
+      orderBy: { createdAt: "desc" },
+      include: {
+        author: {
+          select: {
+            id: true, // <-- add this line
+            name: true,
+            username: true,
+            image: true,
+          },
+        },
+        comments: {
+          include: {
+            author: {
+              select: {
+                id: true,
+                name: true,
+                username: true,
+                image: true,
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+        },
+        likes: {
+          select: { userId: true },
+        },
+        _count: {
+          select: {
+            comments: true,
+            likes: true,
+          },
+        },
+      },
+    });
+    return posts;
+  } catch (error) {
+    console.error("Error fetching posts:", error);
+    return [];
+  }
 }
 export async function toggleLike(postId: string) {
   try {
@@ -116,15 +113,15 @@ export async function toggleLike(postId: string) {
         }),
         ...(post.authorId !== userId
           ? [
-              prisma.notification.create({
-                data: {
-                  type: "LIKE",
-                  userId: post.authorId, // recipient (post author)
-                  creatorId: userId, // person who liked
-                  postId,
-                },
-              }),
-            ]
+            prisma.notification.create({
+              data: {
+                type: "LIKE",
+                userId: post.authorId, // recipient (post author)
+                creatorId: userId, // person who liked
+                postId,
+              },
+            }),
+          ]
           : []),
       ]);
     }
@@ -196,7 +193,8 @@ export async function deletePost(postId: string) {
     });
 
     if (!post) throw new Error("Post not found");
-    if (post.authorId !== userId) throw new Error("Unauthorized - no delete permission");
+    if (post.authorId !== userId)
+      throw new Error("Unauthorized - no delete permission");
 
     await prisma.post.delete({
       where: { id: postId },
