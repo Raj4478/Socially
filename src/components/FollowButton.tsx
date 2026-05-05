@@ -1,37 +1,41 @@
 "use client";
 
-import { useState } from "react";
-import { Button } from "./ui/button";
-import { Loader2Icon } from "lucide-react";
-import toast from "react-hot-toast";
 import { toggleFollow } from "@/actions/users.action";
+import { Button } from "./ui/button";
+import { useState } from "react";
+import { useAuth } from "@clerk/nextjs";
+import toast from "react-hot-toast";
 
-function FollowButton({ userId }: { userId: string }) {
-  const [isLoading, setIsLoading] = useState(false);
+export default function FollowButton({ userId, initialFollowing = false }: {
+  userId: string;
+  initialFollowing?: boolean;
+}) {
+  const [isFollowing, setIsFollowing] = useState(initialFollowing);
+  const [loading, setLoading] = useState(false);
+  const { isSignedIn } = useAuth();
 
   const handleFollow = async () => {
-    setIsLoading(true);
-
+    if (!isSignedIn) { toast.error("Sign in to follow"); return; }
     try {
+      setLoading(true);
       await toggleFollow(userId);
-      toast.success("User followed successfully");
-    } catch (error) {
-      toast.error("Error following user");
+      setIsFollowing((p) => !p);
+    } catch {
+      toast.error("Failed to update follow");
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
     <Button
-      size={"sm"}
-      variant={"secondary"}
       onClick={handleFollow}
-      disabled={isLoading}
-      className="w-20"
+      disabled={loading}
+      variant={isFollowing ? "outline" : "default"}
+      size="sm"
+      className="rounded-full px-4 font-bold shrink-0"
     >
-      {isLoading ? <Loader2Icon className="size-4 animate-spin" /> : "Follow"}
+      {isFollowing ? "Following" : "Follow"}
     </Button>
   );
 }
-export default FollowButton;

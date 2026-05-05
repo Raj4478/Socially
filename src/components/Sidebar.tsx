@@ -1,106 +1,95 @@
-import { currentUser } from '@clerk/nextjs/server'
-import React from 'react'
-import { Card,CardHeader,CardTitle,CardContent } from './ui/card';
-import { Button } from './ui/button';
-import { SignInButton, SignUpButton } from '@clerk/nextjs';
-import { getUserByClerkId } from '@/actions/users.action';
-import Link from 'next/link';
-import { Avatar, AvatarImage } from './ui/avatar';
-import { Separator } from './ui/separator';
-import { MapPinIcon, LinkIcon } from 'lucide-react';
+import { currentUser } from "@clerk/nextjs/server";
+import Link from "next/link";
+import { getUserByClerkId } from "@/actions/users.action";
+import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
+import { Button } from "./ui/button";
+import { SignInButton, SignUpButton } from "@clerk/nextjs";
+import {
+  HomeIcon, SearchIcon, BellIcon, BookmarkIcon,
+  UserIcon, Zap, SettingsIcon
+} from "lucide-react";
+import { cn } from "@/lib/utils";
 
+const NAV = [
+  { href: "/",             icon: HomeIcon,     label: "Home" },
+  { href: "/explore",      icon: SearchIcon,   label: "Explore" },
+  { href: "/notifications",icon: BellIcon,     label: "Notifications" },
+  { href: "/bookmarks",    icon: BookmarkIcon, label: "Bookmarks" },
+  { href: "/profile",      icon: UserIcon,     label: "Profile" },
+];
 
 async function Sidebar() {
+  const authUser = await currentUser();
 
-   const authUser = await currentUser();
-  if (!authUser) return <UnAuthenticatedSidebar />;
+  if (!authUser) {
+    return (
+      <div className="sticky top-20 space-y-3">
+        <nav className="space-y-1">
+          {NAV.slice(0, 2).map(({ href, icon: Icon, label }) => (
+            <Link key={href} href={href}
+              className="flex items-center gap-3 px-3 py-2.5 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors font-medium">
+              <Icon className="size-5" />{label}
+            </Link>
+          ))}
+        </nav>
+        <div className="rounded-2xl border border-border p-4 space-y-3">
+          <p className="font-bold text-lg">New to Socially?</p>
+          <p className="text-sm text-muted-foreground">Sign up now to share your thoughts with the world.</p>
+          <SignUpButton mode="modal">
+            <Button className="w-full rounded-full">Create account</Button>
+          </SignUpButton>
+          <SignInButton mode="modal">
+            <Button variant="outline" className="w-full rounded-full">Sign in</Button>
+          </SignInButton>
+        </div>
+      </div>
+    );
+  }
 
   const user = await getUserByClerkId(authUser.id);
   if (!user) return null;
 
+  const profileHref = `/profile/${user.username}`;
+
   return (
-    <div className="sticky top-20">
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col items-center text-center">
-            <Link
-              href={`/profile/${user.username}`}
-              className="flex flex-col items-center justify-center"
-            >
-              <Avatar className="w-20 h-20 border-2 ">
-                <AvatarImage src={user.image || "/avatar.png"} />
-              </Avatar>
+    <div className="sticky top-16 pt-3 space-y-1">
+      {/* Logo — desktop only */}
+      <Link href="/" className="flex items-center gap-2 px-3 py-2 mb-2">
+        <Zap className="size-7 fill-primary text-primary" />
+        <span className="font-black text-xl tracking-tight">Socially</span>
+      </Link>
 
-              <div className="mt-4 space-y-1">
-                <h3 className="font-semibold">{user.name}</h3>
-                <p className="text-sm text-muted-foreground">{user.username}</p>
-              </div>
-            </Link>
+      {NAV.map(({ href, icon: Icon, label }) => {
+        const finalHref = label === "Profile" ? profileHref : href;
+        return (
+          <Link key={href} href={finalHref}
+            className="group flex items-center gap-3 px-3 py-3 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all font-medium text-[15px]">
+            <Icon className="size-6 group-hover:scale-110 transition-transform" />
+            {label}
+          </Link>
+        );
+      })}
 
-            {user.bio && <p className="mt-3 text-sm text-muted-foreground">{user.bio}</p>}
-
-            <div className="w-full">
-              <Separator className="my-4" />
-              <div className="flex justify-between">
-                <div>
-                  <p className="font-medium">{user._count.following}</p>
-                  <p className="text-xs text-muted-foreground">Following</p>
-                </div>
-                <Separator orientation="vertical" />
-                <div>
-                  <p className="font-medium">{user._count.followers}</p>
-                  <p className="text-xs text-muted-foreground">Followers</p>
-                </div>
-              </div>
-              <Separator className="my-4" />
-            </div>
-
-            <div className="w-full space-y-2 text-sm">
-              <div className="flex items-center text-muted-foreground">
-                <MapPinIcon className="w-4 h-4 mr-2" />
-                {user.location || "No location"}
-              </div>
-              <div className="flex items-center text-muted-foreground">
-                <LinkIcon className="w-4 h-4 mr-2 shrink-0" />
-                {user.website ? (
-                  <a href={`${user.website}`} className="hover:underline truncate" target="_blank">
-                    {user.website}
-                  </a>
-                ) : (
-                  "No website"
-                )}
-              </div>
-            </div>
+      {/* User mini profile */}
+      <div className="mt-4 pt-4 border-t border-border">
+        <Link href={profileHref}
+          className="flex items-center gap-3 p-2 rounded-xl hover:bg-muted/60 transition-colors">
+          <Avatar className="size-10">
+            <AvatarImage src={user.image || "/avatar.png"} />
+            <AvatarFallback>{user.name?.[0] || "U"}</AvatarFallback>
+          </Avatar>
+          <div className="flex-1 min-w-0">
+            <p className="font-semibold text-sm truncate">{user.name}</p>
+            <p className="text-xs text-muted-foreground truncate">@{user.username}</p>
           </div>
-        </CardContent>
-      </Card>
+        </Link>
+        <div className="flex gap-4 px-2 mt-2 text-sm text-muted-foreground">
+          <span><b className="text-foreground">{user._count.following}</b> Following</span>
+          <span><b className="text-foreground">{user._count.followers}</b> Followers</span>
+        </div>
+      </div>
     </div>
   );
 }
 
-export default Sidebar
-
-const UnAuthenticatedSidebar = () => (
-  <div className="sticky top-20">
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-center text-xl font-semibold">Welcome Back!</CardTitle>
-      </CardHeader>
-      <CardContent>
-        <p className="text-center text-muted-foreground mb-4">
-          Login to access your profile and connect with others.
-        </p>
-        <SignInButton mode="modal">
-          <Button className="w-full" variant="outline">
-            Login
-          </Button>
-        </SignInButton>
-        <SignUpButton mode="modal">
-          <Button className="w-full mt-2" variant="default">
-            Sign Up
-          </Button>
-        </SignUpButton>
-      </CardContent>
-    </Card>
-  </div>
-);
+export default Sidebar;

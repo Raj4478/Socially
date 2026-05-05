@@ -1,28 +1,40 @@
-import Link from "next/link";
-import DesktopNavbar from "./DesktopNavbar";
-import MobileNavbar from "./MobileNavbar";
 import { currentUser } from "@clerk/nextjs/server";
-import { syncUser } from "@/actions/users.action";
+import Link from "next/link";
+import { SignInButton, UserButton } from "@clerk/nextjs";
+import ModeToggle from "@/components/ModeToggle";
+import { Button } from "./button";
+import { Zap } from "lucide-react";
+import MobileBottomNav from "./MobileBottomNav";
 
 async function Navbar() {
   const user = await currentUser();
-  if (user) await syncUser(); // POST
 
   return (
-    <nav className="sticky top-0 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 z-50">
-      <div className="max-w-7xl mx-auto px-4">
-        <div className="flex items-center justify-between h-16">
-          <div className="flex items-center">
-            <Link href="/" className="text-xl font-bold text-primary font-mono tracking-wider">
-              Socially
-            </Link>
-          </div>
+    <>
+      <header className="fixed top-0 inset-x-0 z-50 h-14 bg-background/80 backdrop-blur-md border-b border-border">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-full flex items-center justify-between">
+          <Link href="/" className="flex items-center gap-2 font-bold text-xl text-primary">
+            <Zap className="size-6 fill-primary" />
+            <span className="hidden sm:block">Socially</span>
+          </Link>
 
-          <DesktopNavbar />
-          <MobileNavbar />
+          <div className="flex items-center gap-2">
+            <ModeToggle />
+            {user ? (
+              <UserButton afterSignOutUrl="/" />
+            ) : (
+              <SignInButton mode="modal">
+                <Button size="sm" className="rounded-full px-5">Sign in</Button>
+              </SignInButton>
+            )}
+          </div>
         </div>
-      </div>
-    </nav>
+      </header>
+
+      {/* Mobile bottom nav */}
+      <MobileBottomNav />
+    </>
   );
 }
+
 export default Navbar;

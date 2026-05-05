@@ -1,15 +1,16 @@
 "use client";
 
 import { useUser } from "@clerk/nextjs";
-import { useState } from "react";
-import { Card, CardContent } from "./ui/card";
-import { Avatar, AvatarImage } from "./ui/avatar";
-import { Textarea } from "./ui/textarea";
-import { ImageIcon, Loader2Icon, SendIcon } from "lucide-react";
+import { useState, useRef } from "react";
+import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
+import { ImageIcon, XIcon, Loader2Icon, SmileIcon } from "lucide-react";
 import { Button } from "./ui/button";
 import { createPost } from "@/actions/post.action";
 import toast from "react-hot-toast";
 import ImageUpload from "./imageUpload";
+import { cn } from "@/lib/utils";
+
+const MAX_CHARS = 280;
 
 function CreatePost() {
   const { user } = useUser();
@@ -17,48 +18,62 @@ function CreatePost() {
   const [imageUrl, setImageUrl] = useState("");
   const [isPosting, setIsPosting] = useState(false);
   const [showImageUpload, setShowImageUpload] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const charCount = content.length;
+  const charsLeft = MAX_CHARS - charCount;
+  const isOverLimit = charsLeft < 0;
+  const isNearLimit = charsLeft <= 20 && charsLeft >= 0;
+
+  const autoResize = () => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = el.scrollHeight + "px";
+  };
 
   const handleSubmit = async () => {
-    if (!content.trim() && !imageUrl) return;
-
+    if ((!content.trim() && !imageUrl) || isOverLimit) return;
     setIsPosting(true);
     try {
-      const result = await createPost(content, imageUrl);
-      if (result?.success) {
-        // reset the form
+      const res = await createPost(content, imageUrl);
+      if (res?.success) {
         setContent("");
         setImageUrl("");
         setShowImageUpload(false);
-
-        toast.success("Post created successfully");
+        if (textareaRef.current) textareaRef.current.style.height = "auto";
+        toast.success("Posted!");
       }
-    } catch (error) {
-      console.error("Failed to create post:", error);
-      toast.error("Failed to create post");
+    } catch {
+      toast.error("Failed to post");
     } finally {
       setIsPosting(false);
     }
   };
 
-  return (
-    <Card className="mb-6">
-      <CardContent className="pt-6">
-        <div className="space-y-4">
-          <div className="flex space-x-4">
-            <Avatar className="w-10 h-10">
-              <AvatarImage src={user?.imageUrl || "/avatar.png"} />
-            </Avatar>
-            <Textarea
-              placeholder="What's on your mind?"
-              className="min-h-[100px] resize-none border-none focus-visible:ring-0 p-0 text-base"
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              disabled={isPosting}
-            />
-          </div>
+  if (!user) return null;
 
-          {(showImageUpload || imageUrl) && (
-            <div className="border rounded-lg p-4">
+  return (
+    <div className="border-b border-border px-4 py-4">
+      <div className="flex gap-3">
+        <Avatar className="size-10 shrink-0">
+          <AvatarImage src={user.imageUrl || "/avatar.png"} />
+          <AvatarFallback>{user.firstName?.[0] || "U"}</AvatarFallback>
+        </Avatar>
+
+        <div className="flex-1 min-w-0">
+          <textarea
+            ref={textareaRef}
+            placeholder="What's happening?!"
+            value={content}
+            onChange={(e) => { setContent(e.target.value); autoResize(); }}
+            disabled={isPosting}
+            rows={1}
+            className="w-full bg-transparent text-[17px] placeholder:text-muted-foreground resize-none outline-none leading-relaxed min-h-[28px] overflow-hidden"
+          />
+
+          {showImageUpload && (
+            <div className="mt-3 rounded-2xl border border-border overflow-hidden relative">
               <ImageUpload
                 endpoint="postImage"
                 value={imageUrl}
@@ -70,41 +85,54 @@ function CreatePost() {
             </div>
           )}
 
-          <div className="flex items-center justify-between border-t pt-4">
-            <div className="flex space-x-2">
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="text-muted-foreground hover:text-primary"
-                onClick={() => setShowImageUpload(!showImageUpload)}
-                disabled={isPosting}
-              >
-                <ImageIcon className="size-4 mr-2" />
-                Photo
+          <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+            <div className="flex items-center gap-1 -ml-2">
+              <Button type="button" variant="ghost" size="icon"
+                className="rounded-full text-primary hover:bg-primary/10 size-9"
+                onClick={() => setShowImageUpload((p) => !p)}
+                disabled={isPosting}>
+                {showImageUpload && imageUrl
+                  ? <XIcon className="size-4" />
+                  : <ImageIcon className="size-4" />}
               </Button>
             </div>
-            <Button
-              className="flex items-center"
-              onClick={handleSubmit}
-              disabled={(!content.trim() && !imageUrl) || isPosting}
-            >
-              {isPosting ? (
-                <>
-                  <Loader2Icon className="size-4 mr-2 animate-spin" />
-                  Posting...
-                </>
-              ) : (
-                <>
-                  <SendIcon className="size-4 mr-2" />
-                  Post
-                </>
+
+            <div className="flex items-center gap-3">
+              {charCount > 0 && (
+                <div className="relative size-6">
+                  <svg className="size-6 -rotate-90" viewBox="0 0 24 24">
+                    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor"
+                      className="text-muted/40" strokeWidth="2.5" />
+                    <circle cx="12" cy="12" r="10" fill="none"
+                      stroke={isOverLimit ? "oklch(0.577 0.245 27.325)" : isNearLimit ? "oklch(0.75 0.18 70)" : "oklch(0.65 0.22 260)"}
+                      strokeWidth="2.5"
+                      strokeDasharray={`${Math.min(Math.PI * 20 * (charCount / MAX_CHARS), Math.PI * 20)} ${Math.PI * 20}`}
+                      className="transition-all"
+                    />
+                  </svg>
+                  {isNearLimit && (
+                    <span className={cn(
+                      "absolute inset-0 flex items-center justify-center text-[9px] font-bold",
+                      isOverLimit ? "char-danger" : "char-warn"
+                    )}>{charsLeft}</span>
+                  )}
+                </div>
               )}
-            </Button>
+
+              <Button
+                onClick={handleSubmit}
+                disabled={(!content.trim() && !imageUrl) || isPosting || isOverLimit}
+                className="rounded-full px-5 font-bold"
+                size="sm"
+              >
+                {isPosting ? <Loader2Icon className="size-4 animate-spin" /> : "Post"}
+              </Button>
+            </div>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
+
 export default CreatePost;

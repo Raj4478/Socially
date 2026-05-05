@@ -7,142 +7,64 @@ import { getDbUserId } from "./users.action";
 
 export async function getProfileByUsername(username: string) {
   try {
-    const user = await prisma.user.findUnique({
-      where: { username: username },
+    return await prisma.user.findUnique({
+      where: { username },
       select: {
         id: true,
         name: true,
         username: true,
         bio: true,
         image: true,
+        coverImage: true,
         location: true,
         website: true,
         createdAt: true,
-        _count: {
-          select: {
-            followers: true,
-            following: true,
-            posts: true,
-          },
-        },
+        _count: { select: { followers: true, following: true, posts: true } },
       },
     });
-
-    return user;
   } catch (error) {
-    console.error("Error fetching profile:", error);
     throw new Error("Failed to fetch profile");
   }
 }
 
 export async function getUserPosts(userId: string) {
   try {
-    const posts = await prisma.post.findMany({
-      where: {
-        authorId: userId,
-      },
+    return await prisma.post.findMany({
+      where: { authorId: userId },
       include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            image: true,
-          },
-        },
+        author: { select: { id: true, name: true, username: true, image: true } },
         comments: {
-          include: {
-            author: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                image: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
+          include: { author: { select: { id: true, name: true, username: true, image: true } } },
+          orderBy: { createdAt: "asc" },
         },
-        likes: {
-          select: {
-            userId: true,
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          },
-        },
+        likes: { select: { userId: true } },
+        bookmarks: { select: { userId: true } },
+        _count: { select: { likes: true, comments: true } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
-
-    return posts;
   } catch (error) {
-    console.error("Error fetching user posts:", error);
     throw new Error("Failed to fetch user posts");
   }
 }
 
 export async function getUserLikedPosts(userId: string) {
   try {
-    const likedPosts = await prisma.post.findMany({
-      where: {
-        likes: {
-          some: {
-            userId,
-          },
-        },
-      },
+    return await prisma.post.findMany({
+      where: { likes: { some: { userId } } },
       include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            username: true,
-            image: true,
-          },
-        },
+        author: { select: { id: true, name: true, username: true, image: true } },
         comments: {
-          include: {
-            author: {
-              select: {
-                id: true,
-                name: true,
-                username: true,
-                image: true,
-              },
-            },
-          },
-          orderBy: {
-            createdAt: "asc",
-          },
+          include: { author: { select: { id: true, name: true, username: true, image: true } } },
+          orderBy: { createdAt: "asc" },
         },
-        likes: {
-          select: {
-            userId: true,
-          },
-        },
-        _count: {
-          select: {
-            likes: true,
-            comments: true,
-          },
-        },
+        likes: { select: { userId: true } },
+        bookmarks: { select: { userId: true } },
+        _count: { select: { likes: true, comments: true } },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
+      orderBy: { createdAt: "desc" },
     });
-
-    return likedPosts;
   } catch (error) {
-    console.error("Error fetching liked posts:", error);
     throw new Error("Failed to fetch liked posts");
   }
 }
@@ -152,18 +74,14 @@ export async function updateProfile(formData: FormData) {
     const { userId: clerkId } = await auth();
     if (!clerkId) throw new Error("Unauthorized");
 
-    const name = formData.get("name") as string;
-    const bio = formData.get("bio") as string;
-    const location = formData.get("location") as string;
-    const website = formData.get("website") as string;
-
     const user = await prisma.user.update({
       where: { clerkId },
       data: {
-        name,
-        bio,
-        location,
-        website,
+        name: formData.get("name") as string,
+        bio: formData.get("bio") as string,
+        location: formData.get("location") as string,
+        website: formData.get("website") as string,
+        coverImage: (formData.get("coverImage") as string) || undefined,
       },
     });
 
@@ -182,16 +100,11 @@ export async function isFollowing(userId: string) {
 
     const follow = await prisma.follows.findUnique({
       where: {
-        followerId_followingId: {
-          followerId: currentUserId,
-          followingId: userId,
-        },
+        followerId_followingId: { followerId: currentUserId, followingId: userId },
       },
     });
-
     return !!follow;
-  } catch (error) {
-    console.error("Error checking follow status:", error);
+  } catch {
     return false;
   }
 }
