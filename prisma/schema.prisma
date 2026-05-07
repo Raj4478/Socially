@@ -1,6 +1,5 @@
 generator client {
   provider = "prisma-client-js"
-  output   = "../src/generated/prisma"
 }
 
 datasource db {
@@ -9,22 +8,22 @@ datasource db {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  username  String   @unique
-  clerkId   String   @unique
-  name      String?
-  bio       String?
-  image     String?
+  id         String   @id @default(cuid())
+  email      String   @unique
+  username   String   @unique
+  clerkId    String   @unique
+  name       String?
+  bio        String?
+  image      String?
   coverImage String?
-  location  String?
-  website   String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  location   String?
+  website    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  posts    Post[]
-  comments Comment[]
-  likes    Like[]
+  posts     Post[]
+  comments  Comment[]
+  likes     Like[]
   bookmarks Bookmark[]
 
   followers Follows[] @relation("following")
@@ -62,7 +61,7 @@ model Comment {
   post          Post           @relation(fields: [postId], references: [id], onDelete: Cascade)
   notifications Notification[]
 
-  @@index([authorId, postId])
+  @@index([postId])
 }
 
 model Like {
@@ -75,7 +74,7 @@ model Like {
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId])
-  @@index([userId, postId])
+  @@index([postId])
 }
 
 model Bookmark {
@@ -88,7 +87,7 @@ model Bookmark {
   post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
   @@unique([userId, postId])
-  @@index([userId, postId])
+  @@index([postId])
 }
 
 model Follows {
@@ -96,11 +95,10 @@ model Follows {
   followingId String
   createdAt   DateTime @default(now())
 
-  follower  User @relation("follower", fields: [followerId], references: [id], onDelete: Cascade)
+  follower  User @relation("follower",  fields: [followerId],  references: [id], onDelete: Cascade)
   following User @relation("following", fields: [followingId], references: [id], onDelete: Cascade)
 
   @@id([followerId, followingId])
-  @@index([followerId, followingId])
 }
 
 model Notification {
@@ -113,9 +111,9 @@ model Notification {
   commentId String?
   createdAt DateTime         @default(now())
 
-  user    User     @relation("userNotifications", fields: [userId], references: [id], onDelete: Cascade)
-  creator User     @relation("notificationCreator", fields: [creatorId], references: [id], onDelete: Cascade)
-  post    Post?    @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user    User     @relation("userNotifications",  fields: [userId],    references: [id], onDelete: Cascade)
+  creator User     @relation("notificationCreator",fields: [creatorId], references: [id], onDelete: Cascade)
+  post    Post?    @relation(fields: [postId],    references: [id], onDelete: Cascade)
   comment Comment? @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
   @@index([userId, createdAt])

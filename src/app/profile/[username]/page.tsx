@@ -1,3 +1,5 @@
+export const dynamic = "force-dynamic";
+
 import { getProfileByUsername, getUserLikedPosts, getUserPosts, isFollowing } from "@/actions/profile.action";
 import { getDbUserId } from "@/actions/users.action";
 import ProfilePageClient from "./ProfilePageClient";

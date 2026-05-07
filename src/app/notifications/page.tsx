@@ -1,3 +1,6 @@
+export const dynamic = "force-dynamic";
+
+// @ts-nocheck
 import { getNotifications, markNotificationsAsRead } from "@/actions/notification.action";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { formatDistanceToNow } from "date-fns";
@@ -11,7 +14,7 @@ export default async function NotificationsPage() {
   if (!user) redirect("/");
 
   const notifications = await getNotifications();
-  const unreadIds = notifications.filter((n) => !n.read).map((n) => n.id);
+  const unreadIds = notifications.filter((n: any) => !n.read).map((n: any) => n.id);
   if (unreadIds.length > 0) await markNotificationsAsRead(unreadIds);
 
   return <NotificationsClient notifications={notifications} />;

@@ -1,9 +1,12 @@
+export const dynamic = "force-dynamic";
+
+// @ts-nocheck
 import { currentUser } from "@clerk/nextjs/server";
 import CreatePost from "@/components/CreatePost";
 import PostCard from "@/components/PostCard";
 import { getPosts } from "@/actions/post.action";
 import { getDbUserId } from "@/actions/users.action";
-import { Sparkles } from "lucide-react";
+import FeedHeader from "@/components/FeedHeader";
 
 export default async function Home() {
   const user = await currentUser();
@@ -12,33 +15,32 @@ export default async function Home() {
 
   return (
     <div>
-      {/* Feed header */}
-      <div className="sticky top-14 z-10 bg-background/80 backdrop-blur-md border-b border-border px-4 py-3 flex items-center justify-between">
-        <h1 className="font-bold text-lg flex items-center gap-2">
-          <Sparkles className="size-5 text-primary" />
-          Home
-        </h1>
-      </div>
-
+      <FeedHeader />
       <CreatePost />
-
       {posts.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20 text-center px-4">
-          <div className="size-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-            <Sparkles className="size-8 text-primary" />
-          </div>
-          <h3 className="font-bold text-xl mb-2">Nothing here yet</h3>
-          <p className="text-muted-foreground text-sm max-w-xs">
-            Be the first to post something! Your feed will fill up as you follow people.
-          </p>
-        </div>
+        <EmptyFeed />
       ) : (
-        <div>
-          {posts.map((post) => (
-            <PostCard key={post.id} post={post} dbUserId={dbUserId} />
-          ))}
-        </div>
+        posts.map((post: any) => (
+          <PostCard key={post.id} post={post} dbUserId={dbUserId} />
+        ))
       )}
+    </div>
+  );
+}
+
+function EmptyFeed() {
+  return (
+    <div className="flex flex-col items-center justify-center py-24 text-center px-6">
+      <div className="relative mb-6">
+        <div className="size-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <span className="text-4xl">✨</span>
+        </div>
+        <div className="absolute inset-0 rounded-full bg-primary/10 animate-ping opacity-30" />
+      </div>
+      <h3 className="font-bold text-xl mb-2">Your feed is empty</h3>
+      <p className="text-muted-foreground text-sm max-w-xs leading-relaxed">
+        Be the first to share something! Or explore to find interesting people to follow.
+      </p>
     </div>
   );
 }

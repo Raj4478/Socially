@@ -1,12 +1,16 @@
 "use client";
 
 import { toggleFollow } from "@/actions/users.action";
-import { Button } from "./ui/button";
 import { useState } from "react";
 import { useAuth } from "@clerk/nextjs";
 import toast from "react-hot-toast";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
-export default function FollowButton({ userId, initialFollowing = false }: {
+export default function FollowButton({
+  userId,
+  initialFollowing = false,
+}: {
   userId: string;
   initialFollowing?: boolean;
 }) {
@@ -21,21 +25,26 @@ export default function FollowButton({ userId, initialFollowing = false }: {
       await toggleFollow(userId);
       setIsFollowing((p) => !p);
     } catch {
-      toast.error("Failed to update follow");
+      toast.error("Failed");
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Button
+    <motion.button
+      whileHover={{ scale: 1.04 }}
+      whileTap={{ scale: 0.94 }}
       onClick={handleFollow}
       disabled={loading}
-      variant={isFollowing ? "outline" : "default"}
-      size="sm"
-      className="rounded-full px-4 font-bold shrink-0"
+      className={cn(
+        "px-4 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border",
+        isFollowing
+          ? "border-border text-muted-foreground hover:border-red-500/60 hover:text-red-500 hover:bg-red-500/5"
+          : "bg-foreground text-background border-foreground hover:bg-foreground/90 glow-sm"
+      )}
     >
-      {isFollowing ? "Following" : "Follow"}
-    </Button>
+      {loading ? "..." : isFollowing ? "Following" : "Follow"}
+    </motion.button>
   );
 }

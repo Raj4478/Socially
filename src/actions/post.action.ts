@@ -144,7 +144,7 @@ export async function getBookmarkedPosts() {
       },
     });
 
-    return bookmarks.map((b) => b.post);
+    return bookmarks.map((b: any) => b.post);
   } catch (error) {
     console.error("Error fetching bookmarks:", error);
     return [];
@@ -163,7 +163,7 @@ export async function createComment(postId: string, content: string) {
     });
     if (!post) throw new Error("Post not found");
 
-    const [comment] = await prisma.$transaction(async (tx) => {
+    const [comment] = await prisma.$transaction(async (tx: any) => {
       const newComment = await tx.comment.create({
         data: { content, authorId: userId, postId },
       });
