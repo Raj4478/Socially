@@ -1,17 +1,19 @@
 export const dynamic = "force-dynamic";
 
-// @ts-nocheck
-import { currentUser } from "@clerk/nextjs/server";
 import CreatePost from "@/components/CreatePost";
 import PostCard from "@/components/PostCard";
 import { getPosts } from "@/actions/post.action";
 import { getDbUserId } from "@/actions/users.action";
 import FeedHeader from "@/components/FeedHeader";
+import { syncUser } from "@/actions/users.action";
 
 export default async function Home() {
-  const user = await currentUser();
-  const posts = await getPosts();
-  const dbUserId = await getDbUserId().catch(() => null);
+  await syncUser().catch(() => null);
+
+  const [posts, dbUserId] = await Promise.all([
+    getPosts(),
+    getDbUserId(),
+  ]);
 
   return (
     <div>
@@ -20,8 +22,8 @@ export default async function Home() {
       {posts.length === 0 ? (
         <EmptyFeed />
       ) : (
-        posts.map((post: any) => (
-          <PostCard key={post.id} post={post} dbUserId={dbUserId} />
+        posts.map((post) => (
+          <PostCard key={post.id} post={post as any} dbUserId={dbUserId} />
         ))
       )}
     </div>

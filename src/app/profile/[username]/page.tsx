@@ -1,15 +1,25 @@
 export const dynamic = "force-dynamic";
 
-import { getProfileByUsername, getUserLikedPosts, getUserPosts, isFollowing } from "@/actions/profile.action";
+import {
+  getProfileByUsername,
+  getUserLikedPosts,
+  getUserPosts,
+  isFollowing,
+} from "@/actions/profile.action";
 import { getDbUserId } from "@/actions/users.action";
 import ProfilePageClient from "./ProfilePageClient";
 import { notFound } from "next/navigation";
 
-export default async function ProfilePage({ params }: { params: Promise<{ username: string }> }) {
+export default async function ProfilePage({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
   const { username } = await params;
+
   const [user, dbUserId] = await Promise.all([
     getProfileByUsername(username),
-    getDbUserId().catch(() => null),
+    getDbUserId(),
   ]);
 
   if (!user) notFound();
@@ -23,8 +33,8 @@ export default async function ProfilePage({ params }: { params: Promise<{ userna
   return (
     <ProfilePageClient
       user={user}
-      posts={posts}
-      likedPosts={likedPosts}
+      posts={posts as any}
+      likedPosts={likedPosts as any}
       isFollowing={followingStatus}
       dbUserId={dbUserId}
     />

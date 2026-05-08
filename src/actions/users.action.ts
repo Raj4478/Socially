@@ -7,7 +7,7 @@ export async function syncUser() {
   try {
     const { userId } = await auth();
     const user = await currentUser();
-    if (!userId || !user) return;
+    if (!userId || !user) return null;
 
     const existingUser = await prisma.user.findUnique({ where: { clerkId: userId } });
     if (existingUser) return existingUser;
@@ -15,40 +15,47 @@ export async function syncUser() {
     const dbUser = await prisma.user.create({
       data: {
         clerkId: userId,
-        name: `${user.firstName} ${user.lastName}`,
-        username: user.username || user.emailAddresses[0]?.emailAddress.split("@")[0] || "",
-        image: user.imageUrl || "",
-        email: user.emailAddresses[0]?.emailAddress || "",
+        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "User",
+        username: user.username ?? user.emailAddresses[0]?.emailAddress.split("@")[0] ?? userId,
+        image: user.imageUrl ?? "",
+        email: user.emailAddresses[0]?.emailAddress ?? "",
       },
     });
     return dbUser;
   } catch (error) {
     console.error("Error syncing user:", error);
-    throw new Error("Failed to sync user");
+    return null;
   }
 }
 
 export async function getUserByClerkId(clerkId: string) {
-  return prisma.user.findUnique({
-    where: { clerkId },
-    include: {
-      _count: { select: { followers: true, following: true, posts: true } },
-    },
-  });
+  try {
+    return await prisma.user.findUnique({
+      where: { clerkId },
+      include: {
+        _count: { select: { followers: true, following: true, posts: true } },
+      },
+    });
+  } catch {
+    return null;
+  }
 }
 
-export async function getDbUserId() {
-  const { userId: clerkId } = await auth();
-  if (!clerkId) return null;
-  const user = await getUserByClerkId(clerkId);
-  if (!user) throw new Error("User not found");
-  return user.id;
+export async function getDbUserId(): Promise<string | null> {
+  try {
+    const { userId: clerkId } = await auth();
+    if (!clerkId) return null;
+    const user = await getUserByClerkId(clerkId);
+    return user?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
 export async function toggleFollow(targetUserId: string) {
   try {
     const userId = await getDbUserId();
-    if (!userId) throw new Error("User not found");
+    if (!userId) throw new Error("Not authenticated");
     if (userId === targetUserId) throw new Error("Cannot follow yourself");
 
     const existing = await prisma.follows.findUnique({
@@ -67,7 +74,6 @@ export async function toggleFollow(targetUserId: string) {
         }),
       ]);
     }
-
     revalidatePath("/");
     return { success: true };
   } catch (error) {
@@ -81,7 +87,7 @@ export async function getRandomUsers() {
     const userId = await getDbUserId();
     if (!userId) return [];
 
-    return prisma.user.findMany({
+    return await prisma.user.findMany({
       where: {
         AND: [
           { id: { not: userId } },
@@ -108,7 +114,7 @@ export async function getRandomUsers() {
 export async function searchUsers(query: string) {
   try {
     if (!query.trim()) return [];
-    return prisma.user.findMany({
+    return await prisma.user.findMany({
       where: {
         OR: [
           { name: { contains: query, mode: "insensitive" } },
@@ -126,8 +132,7 @@ export async function searchUsers(query: string) {
       },
       take: 10,
     });
-  } catch (error) {
-    console.error("Error searching users:", error);
+  } catch {
     return [];
   }
 }

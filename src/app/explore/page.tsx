@@ -1,13 +1,8 @@
 export const dynamic = "force-dynamic";
 
-// @ts-nocheck
 import { searchUsers } from "@/actions/users.action";
 import { searchPosts } from "@/actions/post.action";
 import { getDbUserId } from "@/actions/users.action";
-import PostCard from "@/components/PostCard";
-import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import FollowButton from "@/components/FollowButton";
-import Link from "next/link";
 import { currentUser } from "@clerk/nextjs/server";
 import ExploreClient from "@/components/ExploreClient";
 
@@ -19,11 +14,11 @@ export default async function ExplorePage({
   const { q } = await searchParams;
   const query = q || "";
   const authUser = await currentUser();
-  const dbUserId = await getDbUserId().catch(() => null);
 
-  const [users, posts] = await Promise.all([
-    query ? searchUsers(query) : [],
-    query ? searchPosts(query) : [],
+  const [dbUserId, users, posts] = await Promise.all([
+    getDbUserId(),
+    query ? searchUsers(query) : Promise.resolve([]),
+    query ? searchPosts(query) : Promise.resolve([]),
   ]);
 
   return (

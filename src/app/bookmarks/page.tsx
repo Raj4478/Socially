@@ -12,14 +12,13 @@ export default async function BookmarksPage() {
   if (!user) redirect("/");
 
   const [dbUserId, bookmarks] = await Promise.all([
-    getDbUserId().catch(() => null),
+    getDbUserId(),
     getBookmarkedPosts(),
   ]);
 
   return (
     <div>
       <BookmarksHeader username={user.username || ""} count={bookmarks.length} />
-
       {bookmarks.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-24 text-center px-6">
           <div className="relative mb-6">
@@ -34,11 +33,9 @@ export default async function BookmarksPage() {
           </p>
         </div>
       ) : (
-        <div>
-          {(bookmarks as any[]).map((post) => (
-            <PostCard key={post.id} post={post} dbUserId={dbUserId} />
-          ))}
-        </div>
+        bookmarks.map((post) => (
+          <PostCard key={post.id} post={post as any} dbUserId={dbUserId} />
+        ))
       )}
     </div>
   );

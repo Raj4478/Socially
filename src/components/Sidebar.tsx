@@ -1,6 +1,6 @@
 import { currentUser } from "@clerk/nextjs/server";
 import SidebarClient from "./SidebarClient";
-import { getUserByClerkId } from "@/actions/users.action";
+import { getUserByClerkId, syncUser } from "@/actions/users.action";
 import { Button } from "./ui/button";
 import { SignInButton, SignUpButton } from "@clerk/nextjs";
 
@@ -27,6 +27,9 @@ async function Sidebar() {
       </div>
     );
   }
+
+  // Sync user to DB on every load — ensures they exist before any query
+  await syncUser().catch(() => null);
 
   const user = await getUserByClerkId(authUser.id);
   if (!user) return null;
