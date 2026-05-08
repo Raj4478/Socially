@@ -5,6 +5,7 @@ import PostCard from "@/components/PostCard";
 import { getPosts } from "@/actions/post.action";
 import { getDbUserId } from "@/actions/users.action";
 import FeedHeader from "@/components/FeedHeader";
+import PageTransition from "@/components/PageTransition";
 import { syncUser } from "@/actions/users.action";
 
 export default async function Home() {
@@ -16,6 +17,7 @@ export default async function Home() {
   ]);
 
   return (
+    <PageTransition>
     <div>
       <FeedHeader />
       <CreatePost />
@@ -27,6 +29,7 @@ export default async function Home() {
         ))
       )}
     </div>
+    </PageTransition>
   );
 }
 

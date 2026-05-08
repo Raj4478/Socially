@@ -1,6 +1,4 @@
 "use client";
-// @ts-nocheck
-"use client";
 
 import { createComment, deletePost, getPosts, toggleLike, toggleBookmark } from "@/actions/post.action";
 import { SignInButton, useUser } from "@clerk/nextjs";
@@ -27,23 +25,26 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
   const [isLiking, setIsLiking] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [hasLiked, setHasLiked] = useState(post.likes.some((l: any) => l.userId === dbUserId));
-  const [hasBookmarked, setHasBookmarked] = useState(post.bookmarks?.some((b: any) => b.userId === dbUserId) ?? false);
+  const [hasLiked, setHasLiked] = useState(
+    post.likes.some((l: any) => l.userId === dbUserId)
+  );
+  const [hasBookmarked, setHasBookmarked] = useState(
+    (post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false
+  );
   const [likeCount, setLikeCount] = useState(post._count.likes);
   const [showComments, setShowComments] = useState(false);
   const [likeAnim, setLikeAnim] = useState(false);
   const [particles, setParticles] = useState<{ id: number; x: number; y: number }[]>([]);
-  const heartRef = useRef<HTMLButtonElement>(null);
 
-  const { ref: inViewRef, inView } = useInView({ threshold: 0.1, triggerOnce: true });
+  const { ref: inViewRef, inView } = useInView({ threshold: 0.05, triggerOnce: true });
 
   const spawnParticles = () => {
-    const newParticles = Array.from({ length: 6 }, (_, i) => ({
+    const ps = Array.from({ length: 6 }, (_, i) => ({
       id: Date.now() + i,
       x: (Math.random() - 0.5) * 60,
       y: -(Math.random() * 40 + 20),
     }));
-    setParticles(newParticles);
+    setParticles(ps);
     setTimeout(() => setParticles([]), 700);
   };
 
@@ -70,7 +71,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
       const res = await toggleBookmark(post.id);
       if (res?.success) toast.success(res.bookmarked ? "Saved!" : "Removed", { duration: 1500 });
     } catch {
-      setHasBookmarked(post.bookmarks?.some((b: any) => b.userId === dbUserId) ?? false);
+      setHasBookmarked((post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false);
     } finally { setIsBookmarking(false); }
   };
 
@@ -98,10 +99,10 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
   return (
     <motion.article
       ref={inViewRef}
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 20 }}
       animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-      className="post-item border-b border-border/60 px-4 py-4 cursor-default"
+      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+      className="post-item border-b border-border/60 px-4 py-4"
     >
       <div className="flex gap-3">
         {/* Avatar */}
@@ -110,7 +111,9 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
             <motion.div whileHover={{ scale: 1.05 }} className="avatar-ring">
               <Avatar className="size-9">
                 <AvatarImage src={post.author.image ?? "/avatar.png"} />
-                <AvatarFallback className="text-sm font-bold">{post.author.name?.[0] || "U"}</AvatarFallback>
+                <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">
+                  {post.author.name?.[0] || "U"}
+                </AvatarFallback>
               </Avatar>
             </motion.div>
           </Link>
@@ -121,12 +124,16 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
           {/* Header */}
           <div className="flex items-start justify-between gap-2 mb-1">
             <div className="flex flex-wrap items-center gap-x-1.5 text-sm min-w-0">
-              <Link href={`/profile/${post.author.username}`}
-                className="font-bold hover:text-primary transition-colors truncate max-w-[130px]">
+              <Link
+                href={`/profile/${post.author.username}`}
+                className="font-bold hover:text-primary transition-colors truncate max-w-[130px]"
+              >
                 {post.author.name}
               </Link>
-              <Link href={`/profile/${post.author.username}`}
-                className="text-muted-foreground truncate text-xs">
+              <Link
+                href={`/profile/${post.author.username}`}
+                className="text-muted-foreground truncate text-xs"
+              >
                 @{post.author.username}
               </Link>
               <span className="text-muted-foreground text-xs">·</span>
@@ -141,25 +148,29 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
 
           {/* Text */}
           {post.content && (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words mb-2">{post.content}</p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words mb-2">
+              {post.content}
+            </p>
           )}
 
           {/* Image */}
           {post.image && (
             <motion.div
-              initial={{ opacity: 0, scale: 0.97 }}
+              initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
+              transition={{ delay: 0.05 }}
               className="mt-2 mb-3 rounded-2xl overflow-hidden border border-border/60 group"
             >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={post.image}
-                alt="Post"
+                alt="Post image"
                 className="w-full h-auto max-h-[500px] object-cover group-hover:scale-[1.01] transition-transform duration-500"
               />
             </motion.div>
           )}
 
-          {/* Actions */}
+          {/* Action bar */}
           <div className="flex items-center gap-1 -ml-2 mt-1">
             {/* Comment */}
             <motion.button
@@ -180,21 +191,22 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
             {user ? (
               <div className="relative">
                 <motion.button
-                  ref={heartRef}
                   whileTap={{ scale: 0.8 }}
                   onClick={handleLike}
                   className={cn(
-                    "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all relative",
+                    "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
                     hasLiked
                       ? "text-red-500 bg-red-500/10"
                       : "text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
                   )}
                 >
-                  <HeartIcon className={cn(
-                    "size-4 transition-all",
-                    hasLiked && "fill-red-500",
-                    likeAnim && "like-burst"
-                  )} />
+                  <HeartIcon
+                    className={cn(
+                      "size-4 transition-all",
+                      hasLiked && "fill-red-500",
+                      likeAnim && "like-burst"
+                    )}
+                  />
                   <motion.span
                     key={likeCount}
                     initial={{ y: hasLiked ? -8 : 8, opacity: 0 }}
@@ -227,32 +239,34 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
               </SignInButton>
             )}
 
-            {/* Bookmark */}
-            {user ? (
-              <motion.button
-                whileTap={{ scale: 0.88 }}
-                onClick={handleBookmark}
-                className={cn(
-                  "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all ml-auto",
-                  hasBookmarked
-                    ? "text-primary bg-primary/10"
-                    : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                )}
-              >
-                <motion.div
-                  animate={hasBookmarked ? { scale: [1, 1.3, 1] } : {}}
-                  transition={{ duration: 0.3 }}
+            {/* Bookmark — pushed to right */}
+            <div className="ml-auto">
+              {user ? (
+                <motion.button
+                  whileTap={{ scale: 0.88 }}
+                  onClick={handleBookmark}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
+                    hasBookmarked
+                      ? "text-primary bg-primary/10"
+                      : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                  )}
                 >
-                  <BookmarkIcon className={cn("size-4", hasBookmarked && "fill-primary")} />
-                </motion.div>
-              </motion.button>
-            ) : (
-              <SignInButton mode="modal">
-                <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all ml-auto">
-                  <BookmarkIcon className="size-4" />
-                </button>
-              </SignInButton>
-            )}
+                  <motion.div
+                    animate={hasBookmarked ? { scale: [1, 1.3, 1] } : {}}
+                    transition={{ duration: 0.3 }}
+                  >
+                    <BookmarkIcon className={cn("size-4", hasBookmarked && "fill-primary")} />
+                  </motion.div>
+                </motion.button>
+              ) : (
+                <SignInButton mode="modal">
+                  <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all">
+                    <BookmarkIcon className="size-4" />
+                  </button>
+                </SignInButton>
+              )}
+            </div>
           </div>
 
           {/* Comments */}
@@ -266,17 +280,20 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                 className="overflow-hidden"
               >
                 <div className="mt-3 pt-3 border-t border-border/60 space-y-3">
-                  {post.comments.map((c, i) => (
+                  {/* Existing comments */}
+                  {post.comments.map((c: any, i: number) => (
                     <motion.div
                       key={c.id}
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.05 }}
+                      transition={{ delay: i * 0.04 }}
                       className="flex gap-2.5"
                     >
                       <Avatar className="size-7 shrink-0">
                         <AvatarImage src={c.author.image ?? "/avatar.png"} />
-                        <AvatarFallback className="text-xs">{c.author.name?.[0]}</AvatarFallback>
+                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                          {c.author.name?.[0]}
+                        </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 min-w-0 bg-muted/50 rounded-2xl px-3 py-2">
                         <div className="flex flex-wrap items-center gap-x-1.5 text-xs mb-0.5">
@@ -291,18 +308,21 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                     </motion.div>
                   ))}
 
+                  {/* Reply input */}
                   {user ? (
                     <div className="flex gap-2.5">
                       <Avatar className="size-7 shrink-0">
                         <AvatarImage src={user.imageUrl || "/avatar.png"} />
-                        <AvatarFallback className="text-xs">{user.firstName?.[0]}</AvatarFallback>
+                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                          {user.firstName?.[0]}
+                        </AvatarFallback>
                       </Avatar>
                       <div className="flex-1 flex gap-2">
                         <Textarea
                           placeholder="Post your reply…"
                           value={newComment}
                           onChange={(e) => setNewComment(e.target.value)}
-                          className="min-h-[52px] resize-none rounded-2xl text-sm bg-muted/50 border-border/60 focus:border-primary/50 floating-input"
+                          className="min-h-[52px] resize-none rounded-2xl text-sm bg-muted/50 border-border/60 focus:border-primary/50"
                           onKeyDown={(e) => {
                             if (e.key === "Enter" && !e.shiftKey) {
                               e.preventDefault();

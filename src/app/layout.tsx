@@ -10,8 +10,33 @@ import { Toaster } from "react-hot-toast";
 export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = {
-  title: "Socially — Connect & Share",
-  description: "A futuristic social platform to connect, share, and discover.",
+  title: {
+    default: "Socially — Connect & Share",
+    template: "%s · Socially",
+  },
+  description: "A futuristic social platform to connect, share ideas, and discover people.",
+  keywords: ["social media", "connect", "share", "community", "posts"],
+  authors: [{ name: "Rajeshwar Singh", url: "https://github.com/Raj4478" }],
+  creator: "Rajeshwar Singh",
+  metadataBase: new URL("https://socially-hcia.vercel.app"),
+  openGraph: {
+    type: "website",
+    locale: "en_US",
+    url: "https://socially-hcia.vercel.app",
+    siteName: "Socially",
+    title: "Socially — Connect & Share",
+    description: "A futuristic social platform to connect, share ideas, and discover people.",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Socially — Connect & Share",
+    description: "A futuristic social platform to connect, share ideas, and discover people.",
+    creator: "@Raj4478",
+  },
+  robots: {
+    index: true,
+    follow: true,
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
@@ -48,6 +73,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
                   fontSize: "14px",
                   fontWeight: "500",
                   backdropFilter: "blur(12px)",
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
                 },
               }}
             />
