@@ -17,6 +17,8 @@ export default async function ProfilePage({
 }) {
   const { username } = await params;
 
+  if (!username) notFound();
+
   const [user, dbUserId] = await Promise.all([
     getProfileByUsername(username),
     getDbUserId(),
@@ -39,4 +41,18 @@ export default async function ProfilePage({
       dbUserId={dbUserId}
     />
   );
+}
+
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ username: string }>;
+}) {
+  const { username } = await params;
+  const user = await getProfileByUsername(username);
+  if (!user) return { title: "Profile not found" };
+  return {
+    title: `${user.name ?? user.username} (@${user.username})`,
+    description: user.bio ?? `Check out ${user.username}'s profile on Socially`,
+  };
 }
