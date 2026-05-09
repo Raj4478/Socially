@@ -2,13 +2,12 @@
 
 import { createComment, deletePost, getPosts, toggleLike, toggleBookmark } from "@/actions/post.action";
 import { SignInButton, useUser } from "@clerk/nextjs";
-import { useState, useRef } from "react";
+import { useState } from "react";
 import toast from "react-hot-toast";
 import Link from "next/link";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
 import { formatDistanceToNow } from "date-fns";
 import { DeleteAlertDialog } from "./DeleteAlertDialog";
-import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { HeartIcon, MessageCircleIcon, SendIcon, BookmarkIcon, LogInIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -17,17 +16,19 @@ import { useInView } from "react-intersection-observer";
 
 type Posts = Awaited<ReturnType<typeof getPosts>>;
 type Post = Posts[number];
+type Comment = Post["comments"][number];
 
 function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
   const { user } = useUser();
+
+  // Local optimistic state
+  const [comments, setComments] = useState<Comment[]>(post.comments as Comment[]);
   const [newComment, setNewComment] = useState("");
   const [isCommenting, setIsCommenting] = useState(false);
   const [isLiking, setIsLiking] = useState(false);
   const [isBookmarking, setIsBookmarking] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [hasLiked, setHasLiked] = useState(
-    post.likes.some((l: any) => l.userId === dbUserId)
-  );
+  const [hasLiked, setHasLiked] = useState(post.likes.some((l: any) => l.userId === dbUserId));
   const [hasBookmarked, setHasBookmarked] = useState(
     (post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false
   );
@@ -55,12 +56,19 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
       const newVal = !hasLiked;
       setHasLiked(newVal);
       setLikeCount((p: number) => p + (hasLiked ? -1 : 1));
-      if (newVal) { setLikeAnim(true); spawnParticles(); setTimeout(() => setLikeAnim(false), 400); }
+      if (newVal) {
+        setLikeAnim(true);
+        spawnParticles();
+        setTimeout(() => setLikeAnim(false), 400);
+      }
       await toggleLike(post.id);
     } catch {
+      // Revert on error
+      setHasLiked(!hasLiked);
       setLikeCount(post._count.likes);
-      setHasLiked(post.likes.some((l: any) => l.userId === dbUserId));
-    } finally { setIsLiking(false); }
+    } finally {
+      setIsLiking(false);
+    }
   };
 
   const handleBookmark = async () => {
@@ -72,18 +80,57 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
       if (res?.success) toast.success(res.bookmarked ? "Saved!" : "Removed", { duration: 1500 });
     } catch {
       setHasBookmarked((post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false);
-    } finally { setIsBookmarking(false); }
+    } finally {
+      setIsBookmarking(false);
+    }
   };
 
   const handleAddComment = async () => {
     if (!newComment.trim() || isCommenting) return;
     try {
       setIsCommenting(true);
-      await createComment(post.id, newComment);
-      toast.success("Replied!");
+
+      // Optimistically add comment to local state immediately
+      const optimisticComment: any = {
+        id: `temp-${Date.now()}`,
+        content: newComment,
+        postId: post.id,
+        authorId: dbUserId || "",
+        createdAt: new Date(),
+        author: {
+          id: dbUserId || "",
+          name: user?.fullName || user?.firstName || "You",
+          username: user?.username || "you",
+          image: user?.imageUrl || "/avatar.png",
+        },
+      };
+
+      setComments((prev) => [...prev, optimisticComment]);
       setNewComment("");
-    } catch { toast.error("Failed"); }
-    finally { setIsCommenting(false); }
+      setShowComments(true);
+
+      // Call the server action
+      const res = await createComment(post.id, optimisticComment.content);
+
+      if (res?.success) {
+        // Replace optimistic comment with real one from server
+        setComments((prev) =>
+          prev.map((c) =>
+            c.id === optimisticComment.id ? { ...optimisticComment, id: (res as any).comment?.id || c.id } : c
+          )
+        );
+        toast.success("Replied!", { duration: 1500 });
+      } else {
+        // Remove optimistic comment on failure
+        setComments((prev) => prev.filter((c) => c.id !== optimisticComment.id));
+        setNewComment(optimisticComment.content); // restore text
+        toast.error(res?.error || "Failed to post comment");
+      }
+    } catch {
+      toast.error("Failed to post comment");
+    } finally {
+      setIsCommenting(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -92,8 +139,11 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
       setIsDeleting(true);
       await deletePost(post.id);
       toast.success("Deleted");
-    } catch { toast.error("Failed to delete"); }
-    finally { setIsDeleting(false); }
+    } catch {
+      toast.error("Failed to delete");
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -130,10 +180,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
               >
                 {post.author.name}
               </Link>
-              <Link
-                href={`/profile/${post.author.username}`}
-                className="text-muted-foreground truncate text-xs"
-              >
+              <Link href={`/profile/${post.author.username}`} className="text-muted-foreground text-xs truncate">
                 @{post.author.username}
               </Link>
               <span className="text-muted-foreground text-xs">·</span>
@@ -148,9 +195,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
 
           {/* Text */}
           {post.content && (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words mb-2">
-              {post.content}
-            </p>
+            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words mb-2">{post.content}</p>
           )}
 
           {/* Image */}
@@ -158,7 +203,6 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
             <motion.div
               initial={{ opacity: 0, scale: 0.98 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.05 }}
               className="mt-2 mb-3 rounded-2xl overflow-hidden border border-border/60 group"
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -172,7 +216,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
 
           {/* Action bar */}
           <div className="flex items-center gap-1 -ml-2 mt-1">
-            {/* Comment */}
+            {/* Comment toggle */}
             <motion.button
               whileTap={{ scale: 0.88 }}
               onClick={() => setShowComments((p: boolean) => !p)}
@@ -184,7 +228,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
               )}
             >
               <MessageCircleIcon className="size-4" />
-              <span>{post.comments.length}</span>
+              <span>{comments.length}</span>
             </motion.button>
 
             {/* Like */}
@@ -200,13 +244,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                       : "text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
                   )}
                 >
-                  <HeartIcon
-                    className={cn(
-                      "size-4 transition-all",
-                      hasLiked && "fill-red-500",
-                      likeAnim && "like-burst"
-                    )}
-                  />
+                  <HeartIcon className={cn("size-4 transition-all", hasLiked && "fill-red-500", likeAnim && "like-burst")} />
                   <motion.span
                     key={likeCount}
                     initial={{ y: hasLiked ? -8 : 8, opacity: 0 }}
@@ -216,7 +254,6 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                     {likeCount}
                   </motion.span>
                 </motion.button>
-                {/* Particle burst */}
                 <AnimatePresence>
                   {particles.map((p) => (
                     <motion.div
@@ -239,7 +276,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
               </SignInButton>
             )}
 
-            {/* Bookmark — pushed to right */}
+            {/* Bookmark */}
             <div className="ml-auto">
               {user ? (
                 <motion.button
@@ -247,15 +284,10 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                   onClick={handleBookmark}
                   className={cn(
                     "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
-                    hasBookmarked
-                      ? "text-primary bg-primary/10"
-                      : "text-muted-foreground hover:text-primary hover:bg-primary/10"
+                    hasBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
                   )}
                 >
-                  <motion.div
-                    animate={hasBookmarked ? { scale: [1, 1.3, 1] } : {}}
-                    transition={{ duration: 0.3 }}
-                  >
+                  <motion.div animate={hasBookmarked ? { scale: [1, 1.3, 1] } : {}} transition={{ duration: 0.3 }}>
                     <BookmarkIcon className={cn("size-4", hasBookmarked && "fill-primary")} />
                   </motion.div>
                 </motion.button>
@@ -269,7 +301,7 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
             </div>
           </div>
 
-          {/* Comments */}
+          {/* Comments section */}
           <AnimatePresence>
             {showComments && (
               <motion.div
@@ -280,33 +312,51 @@ function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
                 className="overflow-hidden"
               >
                 <div className="mt-3 pt-3 border-t border-border/60 space-y-3">
-                  {/* Existing comments */}
-                  {post.comments.map((c: any, i: number) => (
-                    <motion.div
-                      key={c.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.04 }}
-                      className="flex gap-2.5"
-                    >
-                      <Avatar className="size-7 shrink-0">
-                        <AvatarImage src={c.author.image ?? "/avatar.png"} />
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {c.author.name?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 min-w-0 bg-muted/50 rounded-2xl px-3 py-2">
-                        <div className="flex flex-wrap items-center gap-x-1.5 text-xs mb-0.5">
-                          <span className="font-semibold">{c.author.name}</span>
-                          <span className="text-muted-foreground">·</span>
-                          <span className="text-muted-foreground">
-                            {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
-                          </span>
+                  {/* Comments list */}
+                  <AnimatePresence initial={false}>
+                    {comments.map((c: any, i: number) => (
+                      <motion.div
+                        key={c.id}
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -8 }}
+                        transition={{ duration: 0.2, delay: i < 3 ? i * 0.04 : 0 }}
+                        className="flex gap-2.5"
+                      >
+                        <Avatar className="size-7 shrink-0">
+                          <AvatarImage src={c.author.image ?? "/avatar.png"} />
+                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
+                            {c.author.name?.[0]}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div className={cn(
+                          "flex-1 min-w-0 rounded-2xl px-3 py-2",
+                          c.id.startsWith("temp-")
+                            ? "bg-primary/5 border border-primary/20" // optimistic style
+                            : "bg-muted/50"
+                        )}>
+                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs mb-0.5">
+                            <span className="font-semibold">{c.author.name}</span>
+                            <span className="text-muted-foreground">·</span>
+                            <span className="text-muted-foreground">
+                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
+                            </span>
+                            {c.id.startsWith("temp-") && (
+                              <span className="text-primary text-[10px]">sending…</span>
+                            )}
+                          </div>
+                          <p className="text-sm break-words">{c.content}</p>
                         </div>
-                        <p className="text-sm break-words">{c.content}</p>
-                      </div>
-                    </motion.div>
-                  ))}
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+
+                  {/* Empty state */}
+                  {comments.length === 0 && (
+                    <p className="text-xs text-muted-foreground text-center py-2">
+                      No replies yet — be the first!
+                    </p>
+                  )}
 
                   {/* Reply input */}
                   {user ? (
