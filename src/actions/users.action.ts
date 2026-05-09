@@ -5,17 +5,27 @@ import { revalidatePath } from "next/cache";
 
 export async function syncUser() {
   try {
-    const { userId } = await auth();
+    const authResult = await auth();
+    const clerkId = authResult?.userId;
     const user = await currentUser();
-    if (!userId || !user) return null;
 
-    const existingUser = await prisma.user.findUnique({ where: { clerkId: userId } });
-    if (existingUser) return existingUser;
+    console.log("[syncUser] clerkId:", clerkId, "user email:", user?.emailAddresses?.[0]?.emailAddress);
+
+    if (!clerkId || !user) {
+      console.log("[syncUser] No auth - skipping sync");
+      return null;
+    }
+
+    const existingUser = await prisma.user.findUnique({ where: { clerkId } });
+    if (existingUser) {
+      console.log("[syncUser] User already exists:", existingUser.id, existingUser.username);
+      return existingUser;
+    }
 
     const baseUsername =
       user.username ??
       user.emailAddresses[0]?.emailAddress.split("@")[0] ??
-      `user_${userId.slice(-8)}`;
+      `user_${clerkId.slice(-8)}`;
 
     let username = baseUsername;
     let attempt = 0;
@@ -24,17 +34,19 @@ export async function syncUser() {
       username = `${baseUsername}${attempt}`;
     }
 
-    return await prisma.user.create({
+    const created = await prisma.user.create({
       data: {
-        clerkId: userId,
+        clerkId,
         name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || username,
         username,
         image: user.imageUrl ?? "",
         email: user.emailAddresses[0]?.emailAddress ?? "",
       },
     });
-  } catch (error) {
-    console.error("[syncUser] error:", error);
+    console.log("[syncUser] Created new user:", created.id, created.username);
+    return created;
+  } catch (error: any) {
+    console.error("[syncUser] FAILED:", error.message, error.stack);
     return null;
   }
 }
@@ -47,7 +59,8 @@ export async function getUserByClerkId(clerkId: string) {
         _count: { select: { followers: true, following: true, posts: true } },
       },
     });
-  } catch {
+  } catch (error: any) {
+    console.error("[getUserByClerkId] error:", error.message);
     return null;
   }
 }
@@ -56,30 +69,25 @@ export async function getDbUserId(): Promise<string | null> {
   try {
     const authResult = await auth();
     const clerkId = authResult?.userId;
+    console.log("[getDbUserId] clerkId:", clerkId);
 
-    if (!clerkId) {
-      console.log("[getDbUserId] No clerkId from auth()");
-      return null;
-    }
+    if (!clerkId) return null;
 
-    // Try to find user in DB
     let dbUser = await prisma.user.findUnique({
       where: { clerkId },
       select: { id: true },
     });
 
-    // Auto-create if missing
     if (!dbUser) {
-      console.log("[getDbUserId] User not in DB, syncing...");
+      console.log("[getDbUserId] Not in DB, auto-syncing...");
       const synced = await syncUser();
-      if (synced) {
-        dbUser = { id: synced.id };
-      }
+      if (synced) dbUser = { id: synced.id };
     }
 
+    console.log("[getDbUserId] returning:", dbUser?.id ?? null);
     return dbUser?.id ?? null;
-  } catch (error) {
-    console.error("[getDbUserId] error:", error);
+  } catch (error: any) {
+    console.error("[getDbUserId] FAILED:", error.message);
     return null;
   }
 }
@@ -108,8 +116,8 @@ export async function toggleFollow(targetUserId: string) {
     }
     revalidatePath("/");
     return { success: true };
-  } catch (error) {
-    console.error("[toggleFollow] error:", error);
+  } catch (error: any) {
+    console.error("[toggleFollow] error:", error.message);
     return { success: false };
   }
 }
@@ -118,7 +126,6 @@ export async function getRandomUsers() {
   try {
     const userId = await getDbUserId();
     if (!userId) return [];
-
     return await prisma.user.findMany({
       where: {
         AND: [
@@ -133,8 +140,8 @@ export async function getRandomUsers() {
       take: 5,
       orderBy: { followers: { _count: "desc" } },
     });
-  } catch (error) {
-    console.error("[getRandomUsers] error:", error);
+  } catch (error: any) {
+    console.error("[getRandomUsers] error:", error.message);
     return [];
   }
 }
