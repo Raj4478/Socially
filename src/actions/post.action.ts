@@ -1,8 +1,9 @@
 "use server";
 
 import prisma from "@/lib/prisma";
-import { getDbUserId } from "./users.action";
+import { getDbUserId, syncUser } from "./users.action";
 import { revalidatePath } from "next/cache";
+import { auth } from "@clerk/nextjs/server";
 
 const POST_INCLUDE = {
   author: { select: { id: true, name: true, username: true, image: true } },
@@ -15,16 +16,33 @@ const POST_INCLUDE = {
   _count: { select: { comments: true, likes: true, bookmarks: true } },
 };
 
+async function requireUserId(): Promise<string> {
+  // Try getDbUserId first (auto-syncs if missing)
+  let userId = await getDbUserId();
+  if (userId) return userId;
+
+  // Last resort: check Clerk directly and sync
+  const { userId: clerkId } = await auth();
+  if (!clerkId) throw new Error("Not authenticated — please sign in");
+
+  // Force sync
+  const synced = await syncUser();
+  if (!synced) throw new Error("Failed to initialize user account");
+
+  return synced.id;
+}
+
 export async function createPost(content: string, image: string) {
   try {
-    const userId = await getDbUserId();
-    if (!userId) return { success: false, error: "Not authenticated" };
-    const post = await prisma.post.create({ data: { content, image, authorId: userId } });
+    const userId = await requireUserId();
+    const post = await prisma.post.create({
+      data: { content, image, authorId: userId },
+    });
     revalidatePath("/");
     return { success: true, post };
-  } catch (error) {
-    console.error("Error creating post:", error);
-    return { success: false, error: "Failed to create post" };
+  } catch (error: any) {
+    console.error("[createPost] error:", error);
+    return { success: false, error: error.message || "Failed to create post" };
   }
 }
 
@@ -35,15 +53,14 @@ export async function getPosts() {
       include: POST_INCLUDE,
     });
   } catch (error) {
-    console.error("Error fetching posts:", error);
+    console.error("[getPosts] error:", error);
     return [];
   }
 }
 
 export async function toggleLike(postId: string) {
   try {
-    const userId = await getDbUserId();
-    if (!userId) return { success: false, error: "Not authenticated" };
+    const userId = await requireUserId();
 
     const [existingLike, post] = await Promise.all([
       prisma.like.findUnique({ where: { userId_postId: { userId, postId } } }),
@@ -65,16 +82,15 @@ export async function toggleLike(postId: string) {
     }
     revalidatePath("/");
     return { success: true };
-  } catch (error) {
-    console.error("Failed to toggle like:", error);
-    return { success: false, error: "Failed to toggle like" };
+  } catch (error: any) {
+    console.error("[toggleLike] error:", error);
+    return { success: false, error: error.message };
   }
 }
 
 export async function toggleBookmark(postId: string) {
   try {
-    const userId = await getDbUserId();
-    if (!userId) return { success: false, error: "Not authenticated" };
+    const userId = await requireUserId();
 
     const existing = await prisma.bookmark.findUnique({
       where: { userId_postId: { userId, postId } },
@@ -88,9 +104,9 @@ export async function toggleBookmark(postId: string) {
       revalidatePath("/");
       return { success: true, bookmarked: true };
     }
-  } catch (error) {
-    console.error("Failed to toggle bookmark:", error);
-    return { success: false, error: "Failed to toggle bookmark" };
+  } catch (error: any) {
+    console.error("[toggleBookmark] error:", error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -105,15 +121,14 @@ export async function getBookmarkedPosts() {
     });
     return bookmarks.map((b) => b.post);
   } catch (error) {
-    console.error("Error fetching bookmarks:", error);
+    console.error("[getBookmarkedPosts] error:", error);
     return [];
   }
 }
 
 export async function createComment(postId: string, content: string) {
   try {
-    const userId = await getDbUserId();
-    if (!userId) return { success: false, error: "Not authenticated" };
+    const userId = await requireUserId();
     if (!content?.trim()) return { success: false, error: "Content required" };
 
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { authorId: true } });
@@ -127,25 +142,24 @@ export async function createComment(postId: string, content: string) {
     }
     revalidatePath("/");
     return { success: true, comment };
-  } catch (error) {
-    console.error("Failed to create comment:", error);
-    return { success: false, error: "Failed to create comment" };
+  } catch (error: any) {
+    console.error("[createComment] error:", error);
+    return { success: false, error: error.message };
   }
 }
 
 export async function deletePost(postId: string) {
   try {
-    const userId = await getDbUserId();
-    if (!userId) return { success: false, error: "Not authenticated" };
+    const userId = await requireUserId();
     const post = await prisma.post.findUnique({ where: { id: postId }, select: { authorId: true } });
     if (!post) return { success: false, error: "Post not found" };
     if (post.authorId !== userId) return { success: false, error: "Unauthorized" };
     await prisma.post.delete({ where: { id: postId } });
     revalidatePath("/");
     return { success: true };
-  } catch (error) {
-    console.error("Failed to delete post:", error);
-    return { success: false, error: "Failed to delete post" };
+  } catch (error: any) {
+    console.error("[deletePost] error:", error);
+    return { success: false, error: error.message };
   }
 }
 
@@ -165,7 +179,7 @@ export async function searchPosts(query: string) {
       take: 20,
     });
   } catch (error) {
-    console.error("Error searching posts:", error);
+    console.error("[searchPosts] error:", error);
     return [];
   }
 }

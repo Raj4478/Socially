@@ -12,13 +12,11 @@ export async function syncUser() {
     const existingUser = await prisma.user.findUnique({ where: { clerkId: userId } });
     if (existingUser) return existingUser;
 
-    // Build a safe username — must be unique
     const baseUsername =
       user.username ??
       user.emailAddresses[0]?.emailAddress.split("@")[0] ??
-      userId.slice(0, 20);
+      `user_${userId.slice(-8)}`;
 
-    // Ensure username uniqueness
     let username = baseUsername;
     let attempt = 0;
     while (await prisma.user.findUnique({ where: { username } })) {
@@ -26,7 +24,7 @@ export async function syncUser() {
       username = `${baseUsername}${attempt}`;
     }
 
-    const dbUser = await prisma.user.create({
+    return await prisma.user.create({
       data: {
         clerkId: userId,
         name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || username,
@@ -35,9 +33,8 @@ export async function syncUser() {
         email: user.emailAddresses[0]?.emailAddress ?? "",
       },
     });
-    return dbUser;
   } catch (error) {
-    console.error("Error syncing user:", error);
+    console.error("[syncUser] error:", error);
     return null;
   }
 }
@@ -55,30 +52,34 @@ export async function getUserByClerkId(clerkId: string) {
   }
 }
 
-/**
- * Always returns the DB user ID.
- * Auto-syncs the user to the DB if they're authenticated in Clerk but missing from DB.
- * This is the core fix for "Not authenticated" errors on server actions.
- */
 export async function getDbUserId(): Promise<string | null> {
   try {
-    const { userId: clerkId } = await auth();
-    if (!clerkId) return null;
+    const authResult = await auth();
+    const clerkId = authResult?.userId;
 
-    // Try to find existing user
-    let user = await getUserByClerkId(clerkId);
-
-    // If user doesn't exist in DB, auto-sync them
-    if (!user) {
-      const synced = await syncUser();
-      if (!synced) return null;
-      // Re-fetch with full include after sync
-      user = await getUserByClerkId(clerkId);
+    if (!clerkId) {
+      console.log("[getDbUserId] No clerkId from auth()");
+      return null;
     }
 
-    return user?.id ?? null;
+    // Try to find user in DB
+    let dbUser = await prisma.user.findUnique({
+      where: { clerkId },
+      select: { id: true },
+    });
+
+    // Auto-create if missing
+    if (!dbUser) {
+      console.log("[getDbUserId] User not in DB, syncing...");
+      const synced = await syncUser();
+      if (synced) {
+        dbUser = { id: synced.id };
+      }
+    }
+
+    return dbUser?.id ?? null;
   } catch (error) {
-    console.error("getDbUserId error:", error);
+    console.error("[getDbUserId] error:", error);
     return null;
   }
 }
@@ -86,8 +87,8 @@ export async function getDbUserId(): Promise<string | null> {
 export async function toggleFollow(targetUserId: string) {
   try {
     const userId = await getDbUserId();
-    if (!userId) throw new Error("Not authenticated");
-    if (userId === targetUserId) throw new Error("Cannot follow yourself");
+    if (!userId) return { success: false, error: "Not authenticated" };
+    if (userId === targetUserId) return { success: false, error: "Cannot follow yourself" };
 
     const existing = await prisma.follows.findUnique({
       where: { followerId_followingId: { followerId: userId, followingId: targetUserId } },
@@ -108,7 +109,7 @@ export async function toggleFollow(targetUserId: string) {
     revalidatePath("/");
     return { success: true };
   } catch (error) {
-    console.error("Error in toggleFollow:", error);
+    console.error("[toggleFollow] error:", error);
     return { success: false };
   }
 }
@@ -126,18 +127,14 @@ export async function getRandomUsers() {
         ],
       },
       select: {
-        id: true,
-        name: true,
-        username: true,
-        image: true,
-        bio: true,
+        id: true, name: true, username: true, image: true, bio: true,
         _count: { select: { followers: true } },
       },
       take: 5,
       orderBy: { followers: { _count: "desc" } },
     });
   } catch (error) {
-    console.error("Error fetching random users:", error);
+    console.error("[getRandomUsers] error:", error);
     return [];
   }
 }
@@ -154,11 +151,7 @@ export async function searchUsers(query: string) {
         ],
       },
       select: {
-        id: true,
-        name: true,
-        username: true,
-        image: true,
-        bio: true,
+        id: true, name: true, username: true, image: true, bio: true,
         _count: { select: { followers: true, following: true, posts: true } },
       },
       take: 10,
