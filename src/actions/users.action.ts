@@ -12,11 +12,25 @@ export async function syncUser() {
     const existingUser = await prisma.user.findUnique({ where: { clerkId: userId } });
     if (existingUser) return existingUser;
 
+    // Build a safe username — must be unique
+    const baseUsername =
+      user.username ??
+      user.emailAddresses[0]?.emailAddress.split("@")[0] ??
+      userId.slice(0, 20);
+
+    // Ensure username uniqueness
+    let username = baseUsername;
+    let attempt = 0;
+    while (await prisma.user.findUnique({ where: { username } })) {
+      attempt++;
+      username = `${baseUsername}${attempt}`;
+    }
+
     const dbUser = await prisma.user.create({
       data: {
         clerkId: userId,
-        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.username || "User",
-        username: user.username ?? user.emailAddresses[0]?.emailAddress.split("@")[0] ?? userId,
+        name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || username,
+        username,
         image: user.imageUrl ?? "",
         email: user.emailAddresses[0]?.emailAddress ?? "",
       },
@@ -41,13 +55,30 @@ export async function getUserByClerkId(clerkId: string) {
   }
 }
 
+/**
+ * Always returns the DB user ID.
+ * Auto-syncs the user to the DB if they're authenticated in Clerk but missing from DB.
+ * This is the core fix for "Not authenticated" errors on server actions.
+ */
 export async function getDbUserId(): Promise<string | null> {
   try {
     const { userId: clerkId } = await auth();
     if (!clerkId) return null;
-    const user = await getUserByClerkId(clerkId);
+
+    // Try to find existing user
+    let user = await getUserByClerkId(clerkId);
+
+    // If user doesn't exist in DB, auto-sync them
+    if (!user) {
+      const synced = await syncUser();
+      if (!synced) return null;
+      // Re-fetch with full include after sync
+      user = await getUserByClerkId(clerkId);
+    }
+
     return user?.id ?? null;
-  } catch {
+  } catch (error) {
+    console.error("getDbUserId error:", error);
     return null;
   }
 }
@@ -77,7 +108,7 @@ export async function toggleFollow(targetUserId: string) {
     revalidatePath("/");
     return { success: true };
   } catch (error) {
-    console.error("Error in toggleFollow", error);
+    console.error("Error in toggleFollow:", error);
     return { success: false };
   }
 }
@@ -113,7 +144,7 @@ export async function getRandomUsers() {
 
 export async function searchUsers(query: string) {
   try {
-    if (!query.trim()) return [];
+    if (!query?.trim()) return [];
     return await prisma.user.findMany({
       where: {
         OR: [
