@@ -1,411 +1,312 @@
 "use client";
 
-import { createComment, deletePost, getPosts, toggleLike, toggleBookmark } from "@/actions/post.action";
-import { SignInButton, useUser } from "@clerk/nextjs";
 import { useState } from "react";
-import toast from "react-hot-toast";
 import Link from "next/link";
-import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
-import { formatDistanceToNow } from "date-fns";
-import { DeleteAlertDialog } from "./DeleteAlertDialog";
-import { Textarea } from "./ui/textarea";
-import { HeartIcon, MessageCircleIcon, SendIcon, BookmarkIcon, LogInIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { motion, AnimatePresence } from "framer-motion";
-import { useInView } from "react-intersection-observer";
+import { useRouter } from "next/navigation";
+import { useAuth, useClerk } from "@clerk/nextjs";
+import toast from "react-hot-toast";
+import {
+  BookmarkIcon, HeartIcon, LinkIcon, Loader2Icon, MessageCircleIcon, MoreHorizontalIcon, PencilIcon, ShareIcon, Trash2Icon,
+} from "lucide-react";
+import { deletePost, toggleBookmark, toggleLike, updatePost } from "@/actions/post.action";
+import type { PostDTO } from "@/lib/types";
+import { POST_MAX } from "@/lib/validation";
+import { cn, compactNumber, displayName, shortTimeAgo } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter,
+  AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import UserAvatar from "./UserAvatar";
+import RichText from "./RichText";
+import CommentsSection from "./CommentsSection";
 
-type Posts = Awaited<ReturnType<typeof getPosts>>;
-type Post = Posts[number];
-type Comment = Post["comments"][number];
-
-function PostCard({ post, dbUserId }: { post: Post; dbUserId: string | null }) {
-  const { user } = useUser();
-
-  // Local optimistic state
-  const [comments, setComments] = useState<Comment[]>(post.comments as Comment[]);
-  const [newComment, setNewComment] = useState("");
-  const [isCommenting, setIsCommenting] = useState(false);
-  const [isLiking, setIsLiking] = useState(false);
-  const [isBookmarking, setIsBookmarking] = useState(false);
-  const [isDeleting, setIsDeleting] = useState(false);
-  const [hasLiked, setHasLiked] = useState(post.likes.some((l: any) => l.userId === dbUserId));
-  const [hasBookmarked, setHasBookmarked] = useState(
-    (post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false
-  );
-  const [likeCount, setLikeCount] = useState(post._count.likes);
-  const [showComments, setShowComments] = useState(false);
-  const [likeAnim, setLikeAnim] = useState(false);
-  const [particles, setParticles] = useState<{ id: number; x: number; y: number }[]>([]);
-
-  const { ref: inViewRef, inView } = useInView({ threshold: 0.05, triggerOnce: true });
-
-  const spawnParticles = () => {
-    const ps = Array.from({ length: 6 }, (_, i) => ({
-      id: Date.now() + i,
-      x: (Math.random() - 0.5) * 60,
-      y: -(Math.random() * 40 + 20),
-    }));
-    setParticles(ps);
-    setTimeout(() => setParticles([]), 700);
-  };
-
-  const handleLike = async () => {
-    if (isLiking) return;
-    try {
-      setIsLiking(true);
-      const newVal = !hasLiked;
-      setHasLiked(newVal);
-      setLikeCount((p: number) => p + (hasLiked ? -1 : 1));
-      if (newVal) {
-        setLikeAnim(true);
-        spawnParticles();
-        setTimeout(() => setLikeAnim(false), 400);
-      }
-      await toggleLike(post.id);
-    } catch {
-      // Revert on error
-      setHasLiked(!hasLiked);
-      setLikeCount(post._count.likes);
-    } finally {
-      setIsLiking(false);
-    }
-  };
-
-  const handleBookmark = async () => {
-    if (isBookmarking) return;
-    try {
-      setIsBookmarking(true);
-      setHasBookmarked((p: boolean) => !p);
-      const res = await toggleBookmark(post.id);
-      if (res?.success) toast.success(res.bookmarked ? "Saved!" : "Removed", { duration: 1500 });
-    } catch {
-      setHasBookmarked((post as any).bookmarks?.some((b: any) => b.userId === dbUserId) ?? false);
-    } finally {
-      setIsBookmarking(false);
-    }
-  };
-
-  const handleAddComment = async () => {
-    if (!newComment.trim() || isCommenting) return;
-    try {
-      setIsCommenting(true);
-
-      // Optimistically add comment to local state immediately
-      const optimisticComment: any = {
-        id: `temp-${Date.now()}`,
-        content: newComment,
-        postId: post.id,
-        authorId: dbUserId || "",
-        createdAt: new Date(),
-        author: {
-          id: dbUserId || "",
-          name: user?.fullName || user?.firstName || "You",
-          username: user?.username || "you",
-          image: user?.imageUrl || "/avatar.png",
-        },
-      };
-
-      setComments((prev) => [...prev, optimisticComment]);
-      setNewComment("");
-      setShowComments(true);
-
-      // Call the server action
-      const res = await createComment(post.id, optimisticComment.content);
-
-      if (res?.success) {
-        // Replace optimistic comment with real one from server
-        setComments((prev) =>
-          prev.map((c) =>
-            c.id === optimisticComment.id ? { ...optimisticComment, id: (res as any).comment?.id || c.id } : c
-          )
-        );
-        toast.success("Replied!", { duration: 1500 });
-      } else {
-        // Remove optimistic comment on failure
-        setComments((prev) => prev.filter((c) => c.id !== optimisticComment.id));
-        setNewComment(optimisticComment.content); // restore text
-        toast.error(res?.error || "Failed to post comment");
-      }
-    } catch {
-      toast.error("Failed to post comment");
-    } finally {
-      setIsCommenting(false);
-    }
-  };
-
-  const handleDelete = async () => {
-    if (isDeleting) return;
-    try {
-      setIsDeleting(true);
-      await deletePost(post.id);
-      toast.success("Deleted");
-    } catch {
-      toast.error("Failed to delete");
-    } finally {
-      setIsDeleting(false);
-    }
-  };
-
+function ActionButton({
+  label, count, active, activeClass, hoverClass, onClick, children,
+}: {
+  label: string;
+  count?: number;
+  active?: boolean;
+  activeClass?: string;
+  hoverClass: string;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
   return (
-    <motion.article
-      ref={inViewRef}
-      initial={{ opacity: 0, y: 20 }}
-      animate={inView ? { opacity: 1, y: 0 } : {}}
-      transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
-      className="post-item border-b border-border/60 px-4 py-4"
+    <button
+      type="button"
+      onClick={(e) => {
+        e.stopPropagation();
+        onClick();
+      }}
+      aria-label={label}
+      aria-pressed={active}
+      className={cn("-ml-2 flex items-center gap-1 rounded-full p-2 text-sm text-muted-foreground transition-colors", hoverClass, active && activeClass)}
     >
-      <div className="flex gap-3">
-        {/* Avatar */}
-        <div className="shrink-0">
-          <Link href={`/profile/${post.author.username}`}>
-            <motion.div whileHover={{ scale: 1.05 }} className="avatar-ring">
-              <Avatar className="size-9">
-                <AvatarImage src={post.author.image ?? "/avatar.png"} />
-                <AvatarFallback className="text-sm font-bold bg-primary/10 text-primary">
-                  {post.author.name?.[0] || "U"}
-                </AvatarFallback>
-              </Avatar>
-            </motion.div>
-          </Link>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 min-w-0">
-          {/* Header */}
-          <div className="flex items-start justify-between gap-2 mb-1">
-            <div className="flex flex-wrap items-center gap-x-1.5 text-sm min-w-0">
-              <Link
-                href={`/profile/${post.author.username}`}
-                className="font-bold hover:text-primary transition-colors truncate max-w-[130px]"
-              >
-                {post.author.name}
-              </Link>
-              <Link href={`/profile/${post.author.username}`} className="text-muted-foreground text-xs truncate">
-                @{post.author.username}
-              </Link>
-              <span className="text-muted-foreground text-xs">·</span>
-              <span className="text-muted-foreground text-xs whitespace-nowrap">
-                {formatDistanceToNow(new Date(post.createdAt), { addSuffix: false })}
-              </span>
-            </div>
-            {dbUserId === post.author.id && (
-              <DeleteAlertDialog isDeleting={isDeleting} onDelete={handleDelete} />
-            )}
-          </div>
-
-          {/* Text */}
-          {post.content && (
-            <p className="text-sm leading-relaxed whitespace-pre-wrap break-words mb-2">{post.content}</p>
-          )}
-
-          {/* Image */}
-          {post.image && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.98 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="mt-2 mb-3 rounded-2xl overflow-hidden border border-border/60 group"
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={post.image}
-                alt="Post image"
-                className="w-full h-auto max-h-[500px] object-cover group-hover:scale-[1.01] transition-transform duration-500"
-              />
-            </motion.div>
-          )}
-
-          {/* Action bar */}
-          <div className="flex items-center gap-1 -ml-2 mt-1">
-            {/* Comment toggle */}
-            <motion.button
-              whileTap={{ scale: 0.88 }}
-              onClick={() => setShowComments((p: boolean) => !p)}
-              className={cn(
-                "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
-                showComments
-                  ? "text-primary bg-primary/10"
-                  : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-              )}
-            >
-              <MessageCircleIcon className="size-4" />
-              <span>{comments.length}</span>
-            </motion.button>
-
-            {/* Like */}
-            {user ? (
-              <div className="relative">
-                <motion.button
-                  whileTap={{ scale: 0.8 }}
-                  onClick={handleLike}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
-                    hasLiked
-                      ? "text-red-500 bg-red-500/10"
-                      : "text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                  )}
-                >
-                  <HeartIcon className={cn("size-4 transition-all", hasLiked && "fill-red-500", likeAnim && "like-burst")} />
-                  <motion.span
-                    key={likeCount}
-                    initial={{ y: hasLiked ? -8 : 8, opacity: 0 }}
-                    animate={{ y: 0, opacity: 1 }}
-                    transition={{ duration: 0.2 }}
-                  >
-                    {likeCount}
-                  </motion.span>
-                </motion.button>
-                <AnimatePresence>
-                  {particles.map((p) => (
-                    <motion.div
-                      key={p.id}
-                      initial={{ opacity: 1, scale: 1, x: 0, y: 0 }}
-                      animate={{ opacity: 0, scale: 0, x: p.x, y: p.y }}
-                      exit={{ opacity: 0 }}
-                      transition={{ duration: 0.6, ease: "easeOut" }}
-                      className="absolute top-1/2 left-1/2 w-1.5 h-1.5 rounded-full bg-red-500 pointer-events-none"
-                    />
-                  ))}
-                </AnimatePresence>
-              </div>
-            ) : (
-              <SignInButton mode="modal">
-                <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-all">
-                  <HeartIcon className="size-4" />
-                  <span>{likeCount}</span>
-                </button>
-              </SignInButton>
-            )}
-
-            {/* Bookmark */}
-            <div className="ml-auto">
-              {user ? (
-                <motion.button
-                  whileTap={{ scale: 0.88 }}
-                  onClick={handleBookmark}
-                  className={cn(
-                    "flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs font-medium transition-all",
-                    hasBookmarked ? "text-primary bg-primary/10" : "text-muted-foreground hover:text-primary hover:bg-primary/10"
-                  )}
-                >
-                  <motion.div animate={hasBookmarked ? { scale: [1, 1.3, 1] } : {}} transition={{ duration: 0.3 }}>
-                    <BookmarkIcon className={cn("size-4", hasBookmarked && "fill-primary")} />
-                  </motion.div>
-                </motion.button>
-              ) : (
-                <SignInButton mode="modal">
-                  <button className="flex items-center gap-1.5 px-2 py-1.5 rounded-full text-xs text-muted-foreground hover:text-primary hover:bg-primary/10 transition-all">
-                    <BookmarkIcon className="size-4" />
-                  </button>
-                </SignInButton>
-              )}
-            </div>
-          </div>
-
-          {/* Comments section */}
-          <AnimatePresence>
-            {showComments && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: "auto" }}
-                exit={{ opacity: 0, height: 0 }}
-                transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
-                className="overflow-hidden"
-              >
-                <div className="mt-3 pt-3 border-t border-border/60 space-y-3">
-                  {/* Comments list */}
-                  <AnimatePresence initial={false}>
-                    {comments.map((c: any, i: number) => (
-                      <motion.div
-                        key={c.id}
-                        initial={{ opacity: 0, y: 8 }}
-                        animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -8 }}
-                        transition={{ duration: 0.2, delay: i < 3 ? i * 0.04 : 0 }}
-                        className="flex gap-2.5"
-                      >
-                        <Avatar className="size-7 shrink-0">
-                          <AvatarImage src={c.author.image ?? "/avatar.png"} />
-                          <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                            {c.author.name?.[0]}
-                          </AvatarFallback>
-                        </Avatar>
-                        <div className={cn(
-                          "flex-1 min-w-0 rounded-2xl px-3 py-2",
-                          c.id.startsWith("temp-")
-                            ? "bg-primary/5 border border-primary/20" // optimistic style
-                            : "bg-muted/50"
-                        )}>
-                          <div className="flex flex-wrap items-center gap-x-1.5 text-xs mb-0.5">
-                            <span className="font-semibold">{c.author.name}</span>
-                            <span className="text-muted-foreground">·</span>
-                            <span className="text-muted-foreground">
-                              {formatDistanceToNow(new Date(c.createdAt), { addSuffix: true })}
-                            </span>
-                            {c.id.startsWith("temp-") && (
-                              <span className="text-primary text-[10px]">sending…</span>
-                            )}
-                          </div>
-                          <p className="text-sm break-words">{c.content}</p>
-                        </div>
-                      </motion.div>
-                    ))}
-                  </AnimatePresence>
-
-                  {/* Empty state */}
-                  {comments.length === 0 && (
-                    <p className="text-xs text-muted-foreground text-center py-2">
-                      No replies yet — be the first!
-                    </p>
-                  )}
-
-                  {/* Reply input */}
-                  {user ? (
-                    <div className="flex gap-2.5">
-                      <Avatar className="size-7 shrink-0">
-                        <AvatarImage src={user.imageUrl || "/avatar.png"} />
-                        <AvatarFallback className="text-xs bg-primary/10 text-primary">
-                          {user.firstName?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      <div className="flex-1 flex gap-2">
-                        <Textarea
-                          placeholder="Post your reply…"
-                          value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
-                          className="min-h-[52px] resize-none rounded-2xl text-sm bg-muted/50 border-border/60 focus:border-primary/50"
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                              e.preventDefault();
-                              handleAddComment();
-                            }
-                          }}
-                        />
-                        <motion.button
-                          whileTap={{ scale: 0.9 }}
-                          onClick={handleAddComment}
-                          disabled={!newComment.trim() || isCommenting}
-                          className="self-end p-2.5 rounded-full bg-primary text-primary-foreground disabled:opacity-40 glow-sm transition-all"
-                        >
-                          <SendIcon className="size-3.5" />
-                        </motion.button>
-                      </div>
-                    </div>
-                  ) : (
-                    <SignInButton mode="modal">
-                      <div className="flex items-center gap-2 p-3 bg-muted/40 rounded-2xl cursor-pointer hover:bg-muted/60 transition-colors">
-                        <LogInIcon className="size-4 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Sign in to reply</span>
-                      </div>
-                    </SignInButton>
-                  )}
-                </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-      </div>
-    </motion.article>
+      {children}
+      {count !== undefined && <span className="min-w-4 tabular-nums">{count > 0 ? compactNumber(count) : ""}</span>}
+    </button>
   );
 }
 
-export default PostCard;
+export default function PostCard({
+  post: initial,
+  viewerId,
+  defaultShowComments = false,
+  linkToPost = true,
+  onDeleted,
+}: {
+  post: PostDTO;
+  viewerId: string | null;
+  defaultShowComments?: boolean;
+  linkToPost?: boolean;
+  onDeleted?: (id: string) => void;
+}) {
+  const router = useRouter();
+  const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
+  const [post, setPost] = useState(initial);
+  const [showComments, setShowComments] = useState(defaultShowComments);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(initial.content ?? "");
+  const [saving, setSaving] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleted, setDeleted] = useState(false);
+  const [pop, setPop] = useState(false);
+
+  const isMine = viewerId === post.author.id;
+  const postUrl = () => `${window.location.origin}/post/${post.id}`;
+
+  const requireAuth = () => {
+    if (isSignedIn) return true;
+    openSignIn();
+    return false;
+  };
+
+  const like = async () => {
+    if (!requireAuth()) return;
+    const prev = post;
+    const liked = !post.likedByMe;
+    if (liked) {
+      setPop(true);
+      setTimeout(() => setPop(false), 300);
+    }
+    setPost((p) => ({ ...p, likedByMe: liked, likeCount: p.likeCount + (liked ? 1 : -1) }));
+    const res = await toggleLike(post.id);
+    if (!res.success) {
+      setPost(prev);
+      toast.error(res.error);
+    } else {
+      setPost((p) => ({ ...p, likedByMe: res.data.liked, likeCount: res.data.likeCount }));
+    }
+  };
+
+  const bookmark = async () => {
+    if (!requireAuth()) return;
+    const was = post.bookmarkedByMe;
+    setPost((p) => ({ ...p, bookmarkedByMe: !was }));
+    const res = await toggleBookmark(post.id);
+    if (!res.success) {
+      setPost((p) => ({ ...p, bookmarkedByMe: was }));
+      toast.error(res.error);
+    } else {
+      toast.success(res.data.bookmarked ? "Added to bookmarks" : "Removed from bookmarks");
+    }
+  };
+
+  const copyLink = async () => {
+    try {
+      await navigator.clipboard.writeText(postUrl());
+      toast.success("Link copied");
+    } catch {
+      toast.error("Couldn't copy the link");
+    }
+  };
+
+  const share = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: `${displayName(post.author)} on Socially`, url: postUrl() });
+      } catch {
+        /* share sheet dismissed */
+      }
+    } else {
+      await copyLink();
+    }
+  };
+
+  const saveEdit = async () => {
+    setSaving(true);
+    const res = await updatePost(post.id, draft);
+    setSaving(false);
+    if (!res.success) return void toast.error(res.error);
+    setPost(res.data);
+    setEditing(false);
+    toast.success("Post updated");
+  };
+
+  const remove = async () => {
+    const res = await deletePost(post.id);
+    setConfirmDelete(false);
+    if (!res.success) return void toast.error(res.error);
+    setDeleted(true);
+    toast.success("Post deleted");
+    onDeleted?.(post.id);
+  };
+
+  if (deleted) return null;
+
+  return (
+    <article
+      className={cn("border-b px-4 py-3 transition-colors", linkToPost && "cursor-pointer hover:bg-accent/40")}
+      onClick={(e) => {
+        if (!linkToPost || editing || window.getSelection()?.toString()) return;
+        if ((e.target as HTMLElement).closest("a,button,input,textarea,img,[role=menu],[role=alertdialog]")) return;
+        router.push(`/post/${post.id}`);
+      }}
+    >
+      <div className="flex gap-3">
+        <Link href={`/profile/${post.author.username}`} className="shrink-0">
+          <UserAvatar user={post.author} />
+        </Link>
+
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1 text-[15px]">
+            <Link href={`/profile/${post.author.username}`} className="truncate font-semibold hover:underline">
+              {displayName(post.author)}
+            </Link>
+            <span className="truncate text-muted-foreground">@{post.author.username}</span>
+            <span className="text-muted-foreground" aria-hidden>·</span>
+            <Link href={`/post/${post.id}`} className="shrink-0 text-muted-foreground hover:underline">
+              <time dateTime={post.createdAt} title={new Date(post.createdAt).toLocaleString()} suppressHydrationWarning>
+                {shortTimeAgo(post.createdAt)}
+              </time>
+            </Link>
+            {post.edited && <span className="shrink-0 text-xs text-muted-foreground">· edited</span>}
+
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="ghost" size="icon" className="-mr-2 ml-auto size-8 shrink-0 rounded-full text-muted-foreground" aria-label="Post options">
+                  <MoreHorizontalIcon className="size-[18px]" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onSelect={copyLink}>
+                  <LinkIcon /> Copy link
+                </DropdownMenuItem>
+                {isMine && (
+                  <>
+                    <DropdownMenuItem
+                      onSelect={() => {
+                        setDraft(post.content ?? "");
+                        setEditing(true);
+                      }}
+                    >
+                      <PencilIcon /> Edit post
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem variant="destructive" onSelect={() => setConfirmDelete(true)}>
+                      <Trash2Icon /> Delete post
+                    </DropdownMenuItem>
+                  </>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+
+          {editing ? (
+            <div className="mt-1 space-y-2">
+              <textarea
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={3}
+                autoFocus
+                aria-label="Edit post"
+                className="w-full resize-none rounded-lg border bg-transparent p-2.5 text-[15px] outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <span className={cn("mr-auto text-xs tabular-nums", draft.length > POST_MAX ? "text-destructive" : "text-muted-foreground")}>
+                  {draft.length}/{POST_MAX}
+                </span>
+                <Button variant="ghost" size="sm" onClick={() => setEditing(false)}>Cancel</Button>
+                <Button size="sm" className="rounded-full px-4" disabled={saving || draft.length > POST_MAX} onClick={saveEdit}>
+                  {saving && <Loader2Icon className="animate-spin" />} Save
+                </Button>
+              </div>
+            </div>
+          ) : (
+            post.content && <RichText text={post.content} className="mt-0.5 whitespace-pre-wrap break-words text-[15px] leading-relaxed" />
+          )}
+
+          {post.image && (
+            <a href={post.image} target="_blank" rel="noopener noreferrer" className="mt-3 block overflow-hidden rounded-2xl border">
+              <img src={post.image} alt="" loading="lazy" className="max-h-[32rem] w-full object-cover" />
+            </a>
+          )}
+
+          <div className="mt-1.5 flex max-w-md items-center justify-between">
+            <ActionButton
+              label={`Replies: ${post.commentCount}`}
+              count={post.commentCount}
+              active={showComments}
+              activeClass="text-primary"
+              hoverClass="hover:bg-primary/10 hover:text-primary"
+              onClick={() => setShowComments((s) => !s)}
+            >
+              <MessageCircleIcon className="size-[18px]" />
+            </ActionButton>
+            <ActionButton
+              label={`${post.likedByMe ? "Unlike" : "Like"}: ${post.likeCount} likes`}
+              count={post.likeCount}
+              active={post.likedByMe}
+              activeClass="text-like"
+              hoverClass="hover:bg-like/10 hover:text-like"
+              onClick={like}
+            >
+              <HeartIcon className={cn("size-[18px]", post.likedByMe && "fill-current", pop && "animate-pop")} />
+            </ActionButton>
+            <ActionButton
+              label={post.bookmarkedByMe ? "Remove bookmark" : "Bookmark"}
+              active={post.bookmarkedByMe}
+              activeClass="text-primary"
+              hoverClass="hover:bg-primary/10 hover:text-primary"
+              onClick={bookmark}
+            >
+              <BookmarkIcon className={cn("size-[18px]", post.bookmarkedByMe && "fill-current")} />
+            </ActionButton>
+            <ActionButton label="Share" hoverClass="hover:bg-primary/10 hover:text-primary" onClick={share}>
+              <ShareIcon className="size-[18px]" />
+            </ActionButton>
+          </div>
+
+          {showComments && (
+            <CommentsSection
+              postId={post.id}
+              onCountChange={(delta) => setPost((p) => ({ ...p, commentCount: Math.max(0, p.commentCount + delta) }))}
+            />
+          )}
+        </div>
+      </div>
+
+      <AlertDialog open={confirmDelete} onOpenChange={setConfirmDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete post?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This can't be undone. The post and its replies and likes will be removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={remove} className="bg-destructive text-white hover:bg-destructive/90">
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </article>
+  );
+}
