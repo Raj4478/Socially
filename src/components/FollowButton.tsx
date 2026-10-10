@@ -1,50 +1,62 @@
 "use client";
 
-import { toggleFollow } from "@/actions/users.action";
 import { useState } from "react";
-import { useAuth } from "@clerk/nextjs";
+import { useAuth, useClerk } from "@clerk/nextjs";
 import toast from "react-hot-toast";
-import { motion } from "framer-motion";
+import { toggleFollow } from "@/actions/users.action";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 export default function FollowButton({
   userId,
   initialFollowing = false,
+  size = "sm",
+  onChange,
 }: {
   userId: string;
   initialFollowing?: boolean;
+  size?: "sm" | "default";
+  onChange?: (state: { following: boolean; followerCount: number }) => void;
 }) {
-  const [isFollowing, setIsFollowing] = useState(initialFollowing);
-  const [loading, setLoading] = useState(false);
   const { isSignedIn } = useAuth();
+  const { openSignIn } = useClerk();
+  const [following, setFollowing] = useState(initialFollowing);
+  const [busy, setBusy] = useState(false);
+  const [hover, setHover] = useState(false);
 
-  const handleFollow = async () => {
-    if (!isSignedIn) { toast.error("Sign in to follow"); return; }
-    try {
-      setLoading(true);
-      await toggleFollow(userId);
-      setIsFollowing((p) => !p);
-    } catch {
-      toast.error("Failed");
-    } finally {
-      setLoading(false);
+  const click = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!isSignedIn) return openSignIn();
+    setBusy(true);
+    setFollowing((f) => !f);
+    const res = await toggleFollow(userId);
+    setBusy(false);
+    if (!res.success) {
+      setFollowing((f) => !f);
+      toast.error(res.error);
+      return;
     }
+    setFollowing(res.data.following);
+    onChange?.(res.data);
   };
 
   return (
-    <motion.button
-      whileHover={{ scale: 1.04 }}
-      whileTap={{ scale: 0.94 }}
-      onClick={handleFollow}
-      disabled={loading}
+    <Button
+      size={size}
+      variant={following ? "outline" : "default"}
+      disabled={busy}
+      onClick={click}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      aria-pressed={following}
       className={cn(
-        "px-4 py-1.5 rounded-full text-xs font-bold transition-all shrink-0 border",
-        isFollowing
-          ? "border-border text-muted-foreground hover:border-red-500/60 hover:text-red-500 hover:bg-red-500/5"
-          : "bg-foreground text-background border-foreground hover:bg-foreground/90 glow-sm"
+        "min-w-24 rounded-full font-semibold",
+        !following && "bg-foreground text-background hover:bg-foreground/85",
+        following && hover && "border-destructive/50 text-destructive hover:bg-destructive/10 hover:text-destructive"
       )}
     >
-      {loading ? "..." : isFollowing ? "Following" : "Follow"}
-    </motion.button>
+      {following ? (hover ? "Unfollow" : "Following") : "Follow"}
+    </Button>
   );
 }

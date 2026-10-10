@@ -1,80 +1,64 @@
-import type { Metadata } from "next";
-import "./globals.css";
+import type { Metadata, Viewport } from "next";
+import { Inter } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
-import { ThemeProvider } from "@/components/ThemeProvider";
-import Navbar from "@/components/ui/Navbar";
-import Sidebar from "@/components/Sidebar";
-import RightPanel from "@/components/RightPanel";
 import { Toaster } from "react-hot-toast";
+import "./globals.css";
+import { ThemeProvider } from "@/components/ThemeProvider";
+import LeftNav from "@/components/shell/LeftNav";
+import RightRail from "@/components/shell/RightRail";
+import MobileChrome from "@/components/shell/MobileChrome";
 
+// Every page depends on who is signed in, so nothing is prerendered at build time.
 export const dynamic = "force-dynamic";
 
+const inter = Inter({ subsets: ["latin"], variable: "--font-inter", display: "swap" });
+
+const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://socially-hcia.vercel.app";
+const DESCRIPTION = "Share what's on your mind, follow people you care about and join conversations around #topics.";
+
 export const metadata: Metadata = {
-  title: {
-    default: "Socially — Connect & Share",
-    template: "%s · Socially",
-  },
-  description: "A futuristic social platform to connect, share ideas, and discover people.",
-  keywords: ["social media", "connect", "share", "community", "posts"],
+  metadataBase: new URL(SITE_URL),
+  title: { default: "Socially", template: "%s · Socially" },
+  description: DESCRIPTION,
+  applicationName: "Socially",
   authors: [{ name: "Rajeshwar Singh", url: "https://github.com/Raj4478" }],
-  creator: "Rajeshwar Singh",
-  metadataBase: new URL("https://socially-hcia.vercel.app"),
-  openGraph: {
-    type: "website",
-    locale: "en_US",
-    url: "https://socially-hcia.vercel.app",
-    siteName: "Socially",
-    title: "Socially — Connect & Share",
-    description: "A futuristic social platform to connect, share ideas, and discover people.",
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Socially — Connect & Share",
-    description: "A futuristic social platform to connect, share ideas, and discover people.",
-    creator: "@Raj4478",
-  },
-  robots: {
-    index: true,
-    follow: true,
-  },
+  openGraph: { type: "website", siteName: "Socially", title: "Socially", description: DESCRIPTION, url: SITE_URL },
+  twitter: { card: "summary", title: "Socially", description: DESCRIPTION },
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#ffffff" },
+    { media: "(prefers-color-scheme: dark)", color: "#18181b" },
+  ],
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <ClerkProvider>
-      <html lang="en" suppressHydrationWarning>
-        <body className="antialiased font-sans">
+      <html lang="en" suppressHydrationWarning className={inter.variable}>
+        <body className="font-sans">
           <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
-            <div className="min-h-screen bg-background">
-              <Navbar />
-              <div className="max-w-7xl mx-auto px-2 sm:px-4 lg:px-8">
-                <div className="grid grid-cols-1 lg:grid-cols-12 gap-0 lg:gap-6 pt-14 pb-20 lg:pb-0">
-                  <aside className="hidden lg:block lg:col-span-3 xl:col-span-2">
-                    <Sidebar />
-                  </aside>
-                  <main className="col-span-1 lg:col-span-6 xl:col-span-7 border-x border-border/60 min-h-screen">
-                    {children}
-                  </main>
-                  <aside className="hidden lg:block lg:col-span-3">
-                    <RightPanel />
-                  </aside>
-                </div>
-              </div>
+            <a href="#main" className="sr-only focus:not-sr-only focus:fixed focus:left-4 focus:top-4 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow">
+              Skip to content
+            </a>
+            <MobileChrome />
+            <div className="mx-auto flex max-w-7xl justify-center px-0 sm:px-4">
+              <aside className="hidden w-64 shrink-0 lg:block xl:w-72">
+                <LeftNav />
+              </aside>
+              <main id="main" className="min-h-screen w-full max-w-[600px] border-x pb-16 pt-14 lg:pb-0 lg:pt-0">
+                {children}
+              </main>
+              <aside className="hidden w-80 shrink-0 pl-6 xl:block">
+                <RightRail />
+              </aside>
             </div>
             <Toaster
               position="bottom-center"
               toastOptions={{
-                duration: 2000,
-                style: {
-                  background: "var(--card)",
-                  color: "var(--card-foreground)",
-                  border: "1px solid var(--border)",
-                  borderRadius: "14px",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  backdropFilter: "blur(12px)",
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
-                },
+                duration: 2500,
+                className: "!bg-foreground !text-background !text-sm !rounded-lg !shadow-lg",
               }}
             />
           </ThemeProvider>
